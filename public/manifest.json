@@ -1,0 +1,22 @@
+{
+  "name": "Loto Israel",
+  "short_name": "Loto",
+  "description": "מנתח לוטו ישראל חכם - ניתוח סטטיסטי של הגרלות",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a2e",
+  "theme_color": "#0a0a2e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
