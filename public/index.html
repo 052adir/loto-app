@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>לוטו ישראל - מנתח חכם</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: linear-gradient(135deg, #0a0a2e 0%, #1a1a4e 50%, #0d0d3b 100%);
+      color: #e0e0ff;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; }
+
+    h1 {
+      text-align: center;
+      font-size: 2.2em;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, #ffd700, #ff8c00, #ffd700);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #8888cc;
+      margin-bottom: 30px;
+      font-size: 1.1em;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px;
+      font-size: 1.3em;
+      color: #aaaadd;
+    }
+
+    .loading .spinner {
+      display: inline-block;
+      width: 40px; height: 40px;
+      border: 4px solid #333366;
+      border-top-color: #ffd700;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 15px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Recommendation Cards */
+    .rec-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    @media (max-width: 600px) {
+      .rec-section { grid-template-columns: 1fr; }
+    }
+
+    .rec-card {
+      background: linear-gradient(145deg, #1e1e5a, #2a2a6a);
+      border: 2px solid #3a3a8a;
+      border-radius: 16px;
+      padding: 25px;
+      text-align: center;
+      transition: transform 0.2s;
+    }
+
+    .rec-card:hover { transform: translateY(-3px); }
+
+    .rec-card h2 {
+      font-size: 1.3em;
+      margin-bottom: 15px;
+      color: #ffd700;
+    }
+
+    .numbers-row {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+
+    .ball {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 1.2em;
+      background: linear-gradient(145deg, #4444cc, #2222aa);
+      border: 2px solid #6666ee;
+      color: white;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    }
+
+    .ball.strong {
+      background: linear-gradient(145deg, #cc8800, #aa6600);
+      border-color: #ffaa00;
+      color: #fff;
+    }
+
+    .strong-label {
+      font-size: 0.85em;
+      color: #ffaa00;
+      margin-bottom: 5px;
+    }
+
+    /* Stats Section */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: rgba(30, 30, 80, 0.8);
+      border: 1px solid #3a3a7a;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .stat-card h3 {
+      color: #aaaaee;
+      font-size: 1.1em;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #3a3a7a;
+      padding-bottom: 8px;
+    }
+
+    .stat-list {
+      list-style: none;
+    }
+
+    .stat-list li {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.95em;
+    }
+
+    .stat-list li .num {
+      font-weight: bold;
+      color: #ffd700;
+      min-width: 30px;
+    }
+
+    .stat-list li .val {
+      color: #aaaacc;
+    }
+
+    /* Heatmap */
+    .heatmap {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 4px;
+      margin-bottom: 30px;
+    }
+
+    @media (max-width: 500px) {
+      .heatmap { grid-template-columns: repeat(6, 1fr); }
+    }
+
+    .heat-cell {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 0.95em;
+      cursor: pointer;
+      transition: transform 0.15s;
+      position: relative;
+    }
+
+    .heat-cell:hover {
+      transform: scale(1.15);
+      z-index: 2;
+    }
+
+    .heat-cell .tooltip {
+      display: none;
+      position: absolute;
+      bottom: 110%;
+      background: #111;
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8em;
+      white-space: nowrap;
+    }
+
+    .heat-cell:hover .tooltip { display: block; }
+
+    /* Pairs */
+    .pairs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px;
+      margin-bottom: 30px;
+    }
+
+    .pair-badge {
+      background: rgba(40, 40, 100, 0.8);
+      border: 1px solid #4a4a9a;
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+      font-size: 0.9em;
+    }
+
+    .pair-badge .pair-nums { color: #ffd700; font-weight: bold; }
+    .pair-badge .pair-count { color: #8888bb; font-size: 0.85em; }
+
+    /* Info */
+    .info-bar {
+      text-align: center;
+      color: #6666aa;
+      font-size: 0.85em;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 24px;
+      background: linear-gradient(145deg, #4444cc, #3333aa);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin: 5px;
+    }
+
+    .btn:hover { background: linear-gradient(145deg, #5555dd, #4444bb); transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-gold {
+      background: linear-gradient(145deg, #cc8800, #aa6600);
+    }
+    .btn-gold:hover { background: linear-gradient(145deg, #dd9900, #bb7700); }
+
+    .actions { text-align: center; margin-bottom: 30px; }
+
+    .section-title {
+      font-size: 1.4em;
+      color: #ccccff;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    /* Last draws table */
+    .draws-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 30px;
+    }
+
+    .draws-table th {
+      background: rgba(40, 40, 100, 0.8);
+      padding: 10px;
+      text-align: center;
+      color: #aaaaee;
+    }
+
+    .draws-table td {
+      padding: 8px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .draws-table tr:hover { background: rgba(50, 50, 120, 0.3); }
+
+    .mini-ball {
+      display: inline-flex;
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8em;
+      font-weight: bold;
+      background: #3333aa;
+      margin: 1px;
+    }
+
+    .mini-ball.strong {
+      background: #aa6600;
+    }
+
+    footer {
+      text-align: center;
+      color: #444477;
+      padding: 20px;
+      font-size: 0.85em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎰 לוטו ישראל - מנתח חכם</h1>
+    <p class="subtitle">ניתוח סטטיסטי של כל ההגרלות ההיסטוריות</p>
+
+    <div id="content">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div>טוען נתונים מכל ההגרלות...</div>
+      </div>
+    </div>
+
+    <footer>
+      ⚠️ הניתוח מבוסס על סטטיסטיקה בלבד ואינו מבטיח זכייה.
+      הלוטו הוא משחק מזל ולכל מספר אותם סיכויים בכל הגרלה.
+    </footer>
+  </div>
+
+  <script>
+    async function loadData() {
+      try {
+        const res = await fetch('/api/analyze');
+        const data = await res.json();
+        renderAll(data);
+      } catch (err) {
+        document.getElementById('content').innerHTML =
+          `<div class="loading" style="color:#ff6666;">שגיאה בטעינת נתונים: ${err.message}</div>`;
+      }
+    }
+
+    function renderAll(data) {
+      const { line1, line2, analysis } = data;
+      const html = [];
+
+      // Recommendations
+      html.push(`
+        <div class="rec-section">
+          <div class="rec-card">
+            <h2>🎯 שורה 1</h2>
+            <div class="numbers-row">
+              ${line1.numbers.map(n => `<div class="ball">${n}</div>`).join('')}
+            </div>
+            <div class="strong-label">💪 מספר חזק</div>
+            <div class="numbers-row">
+              <div class="ball strong">${line1.strong}</div>
+            </div>
+          </div>
+          <div class="rec-card">
+            <h2>🎯 שורה 2</h2>
+            <div class="numbers-row">
+              ${line2.numbers.map(n => `<div class="ball">${n}</div>`).join('')}
+            </div>
+            <div class="strong-label">💪 מספר חזק</div>
+            <div class="numbers-row">
+              <div class="ball strong">${line2.strong}</div>
+            </div>
+          </div>
+        </div>
+      `);
+
+      // Info bar
+      html.push(`
+        <div class="info-bar">
+          📊 ניתוח מבוסס על ${analysis.totalDrawsAnalyzed} הגרלות
+          (${new Date(analysis.dateRange.from).toLocaleDateString('he-IL')} - ${new Date(analysis.dateRange.to).toLocaleDateString('he-IL')})
+        </div>
+      `);
+
+      // Actions
+      html.push(`
+        <div class="actions">
+          <button class="btn" onclick="loadData()">🔄 ניתוח מחדש</button>
+          <button class="btn btn-gold" onclick="sendNotification()">📱 שלח WhatsApp עכשיו</button>
+        </div>
+      `);
+
+      // Heatmap
+      html.push(`<h3 class="section-title">🗺️ מפת חום - ציון משולב לכל מספר</h3>`);
+      const maxScore = analysis.allScores[0].score;
+      html.push(`<div class="heatmap">`);
+      for (let i = 1; i <= 37; i++) {
+        const item = analysis.allScores.find(x => x.number === i);
+        const intensity = item.score / maxScore;
+        const r = Math.round(40 + intensity * 200);
+        const g = Math.round(20 + intensity * 100);
+        const b = Math.round(100 - intensity * 60);
+        html.push(`
+          <div class="heat-cell" style="background:rgb(${r},${g},${b});">
+            ${i}
+            <div class="tooltip">מספר ${i}: ציון ${item.score}</div>
+          </div>
+        `);
+      }
+      html.push(`</div>`);
+
+      // Stats grid
+      html.push(`<div class="stats-grid">`);
+
+      // Top frequent
+      html.push(`<div class="stat-card"><h3>🔥 הנפוצים ביותר</h3><ul class="stat-list">`);
+      for (const item of analysis.topFrequent) {
+        html.push(`<li><span class="num">${item.number}</span><span class="val">${item.count} פעמים (${item.pct}%)</span></li>`);
+      }
+      html.push(`</ul></div>`);
+
+      // Top trending
+      html.push(`<div class="stat-card"><h3>📈 במגמת עלייה</h3><ul class="stat-list">`);
+      for (const item of analysis.topTrending) {
+        html.push(`<li><span class="num">${item.number}</span><span class="val">ציון: ${item.score}</span></li>`);
+      }
+      html.push(`</ul></div>`);
+
+      // Overdue
+      html.push(`<div class="stat-card"><h3>⏰ מאחרים (לא הופיעו הכי הרבה זמן)</h3><ul class="stat-list">`);
+      for (const item of analysis.topOverdue) {
+        html.push(`<li><span class="num">${item.number}</span><span class="val">${item.drawsSinceLastSeen} הגרלות</span></li>`);
+      }
+      html.push(`</ul></div>`);
+
+      html.push(`</div>`);
+
+      // Hot pairs
+      html.push(`<h3 class="section-title">🔗 זוגות חמים</h3>`);
+      html.push(`<div class="pairs-grid">`);
+      for (const p of analysis.hotPairs.slice(0, 12)) {
+        html.push(`<div class="pair-badge"><div class="pair-nums">${p.pair}</div><div class="pair-count">${p.count} פעמים</div></div>`);
+      }
+      html.push(`</div>`);
+
+      // Strong number scores
+      html.push(`<h3 class="section-title">💪 מספר חזק - דירוג</h3>`);
+      html.push(`<div class="numbers-row" style="margin-bottom:30px;">`);
+      for (const s of analysis.strongScores) {
+        const opacity = 0.4 + (s.score / analysis.strongScores[0].score) * 0.6;
+        html.push(`<div class="ball strong" style="opacity:${opacity}; width:55px; height:55px; font-size:1.3em;" title="ציון: ${s.score}">${s.number}</div>`);
+      }
+      html.push(`</div>`);
+
+      document.getElementById('content').innerHTML = html.join('');
+    }
+
+    async function sendNotification() {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = '📤 שולח...';
+      try {
+        const res = await fetch('/api/notify', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          btn.textContent = '✅ נשלח!';
+        } else {
+          btn.textContent = '❌ ' + (data.error || 'שגיאה');
+        }
+      } catch (err) {
+        btn.textContent = '❌ שגיאה';
+      }
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '📱 שלח WhatsApp עכשיו';
+      }, 3000);
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
