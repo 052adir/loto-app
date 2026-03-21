@@ -3,12 +3,9 @@
  * Uses only Node.js built-in modules
  */
 
-require('dotenv').config();
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const cron = require('node-cron');
-const { sendTelegramNotification } = require('./notify');
 const {
   fetchAllDraws,
   generateRecommendations,
@@ -76,19 +73,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/api/notify' && req.method === 'POST') {
-    try {
-      const { sendTelegramNotification } = require('./notify');
-      const result = await sendTelegramNotification();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, messageId: result.result.message_id }));
-    } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: err.message }));
-    }
-    return;
-  }
-
   // Static files
   let filePath = url.pathname === '/' ? '/index.html' : url.pathname;
   filePath = path.join(__dirname, 'public', filePath);
@@ -109,16 +93,8 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Lotto Israel running at http://localhost:${PORT}`);
 
-  // Schedule Telegram notifications every Tuesday and Friday at 08:00 AM
-  cron.schedule('0 8 * * 2,5', async () => {
-    console.log(`⏰ [${new Date().toLocaleString('he-IL')}] Running scheduled Telegram notification...`);
-    try {
-      await sendTelegramNotification();
-      console.log('✅ Scheduled notification sent successfully.');
-    } catch (err) {
-      console.error('❌ Scheduled notification failed:', err.message);
-    }
-  });
-
-  console.log('📅 Cron scheduled: Telegram notifications every Tue & Fri at 08:00');
+  // Pre-fetch lottery data on startup so the first request is fast
+  fetchAllDraws()
+    .then(draws => console.log(`📊 Startup: ${draws.length} draws loaded and cached.`))
+    .catch(err => console.error('⚠️  Startup pre-fetch failed:', err.message));
 });
