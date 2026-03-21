@@ -1,4 +1,4 @@
-const CACHE_NAME = 'loto-v1';
+const CACHE_NAME = 'loto-v2';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 // Install — cache static shell
@@ -19,8 +19,18 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-// Fetch — network first, fall back to cache
+// Fetch — API requests always go to network (never cached).
+// Static assets use network-first with cache fallback.
 self.addEventListener('fetch', (e) => {
+  const url = new URL(e.request.url);
+
+  // NEVER cache API responses — always hit the server for fresh data
+  if (url.pathname.startsWith('/api/')) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+
+  // Static assets: network first, fall back to cache
   e.respondWith(
     fetch(e.request)
       .then((res) => {

@@ -222,18 +222,18 @@ async function scrapeNewDraws(startId) {
   return draws;
 }
 
-async function fetchAllDraws() {
-  // Return cache if still valid
-  if (_drawsCache && Date.now() - _cacheTime < CACHE_TTL) {
-    return _drawsCache;
-  }
+// Track whether the background scrape has been kicked off
+let _bgScrapeRunning = false;
+let _bgScrapeComplete = false;
 
-  const allDraws = [];
-
-  // --- Phase 1: Fetch historical draws from third-party API (IDs 1-3744) ---
+/**
+ * Phase 1 only: fast fetch from third-party API (IDs 1-3744).
+ * Returns quickly so the server can start and respond to health checks.
+ */
+async function fetchApiDraws() {
+  const draws = [];
   console.log(`📦 Phase 1: Fetching historical draws from third-party API (IDs 1-${PAIS_API_LAST_ID})...`);
   const batchSize = 500;
-  let apiCount = 0;
   for (let start = 1; start <= PAIS_API_LAST_ID; start += batchSize) {
     const end = Math.min(start + batchSize - 1, PAIS_API_LAST_ID);
     try {
@@ -243,33 +243,69 @@ async function fetchAllDraws() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          allDraws.push(...data);
-          apiCount += data.length;
+          draws.push(...data);
         }
       }
     } catch (e) {
       console.log(`   ⚠️  API batch ${start}-${end} skipped: ${e.message}`);
     }
   }
-  console.log(`   ✅ API returned ${apiCount} historical draws`);
+  console.log(`   ✅ API returned ${draws.length} historical draws`);
+  return draws;
+}
 
-  // --- Phase 2: Scrape newer draws directly from official Pais website ---
-  console.log(`🌐 Phase 2: Scraping new draws from pais.co.il (starting at ID ${PAIS_API_LAST_ID + 1})...`);
-  try {
-    const newDraws = await scrapeNewDraws(PAIS_API_LAST_ID + 1);
-    if (newDraws.length > 0) {
+/**
+ * Phase 2: scrape newer draws from official Pais website.
+ * Runs in the background — merges results into existing cache when done.
+ */
+function startBackgroundScrape() {
+  if (_bgScrapeRunning || _bgScrapeComplete) return;
+  _bgScrapeRunning = true;
+
+  console.log(`🌐 Background: starting scrape of new draws from pais.co.il (ID ${PAIS_API_LAST_ID + 1}+)...`);
+
+  scrapeNewDraws(PAIS_API_LAST_ID + 1)
+    .then(newDraws => {
+      _bgScrapeRunning = false;
+      _bgScrapeComplete = true;
+
+      if (newDraws.length === 0) {
+        console.log('   ⚠️  Background scrape: no new draws found.');
+        return;
+      }
+
       const maxScrapedId = Math.max(...newDraws.map(d => d._id));
-      const latestDate = newDraws.sort((a, b) => new Date(b.date) - new Date(a.date))[0].date;
-      console.log(`   ✅ Scraped ${newDraws.length} new draws (IDs ${PAIS_API_LAST_ID + 1}-${maxScrapedId}, latest: ${latestDate})`);
-      allDraws.push(...newDraws);
-    } else {
-      console.log('   ⚠️  No new draws scraped. The scraping selectors may need updating.');
-    }
-  } catch (e) {
-    console.log(`   ❌ Scraping failed: ${e.message}`);
+      const sorted = [...newDraws].sort((a, b) => new Date(b.date) - new Date(a.date));
+      console.log(`   ✅ Background scrape: ${newDraws.length} new draws (up to ID ${maxScrapedId}, latest: ${sorted[0].date})`);
+
+      // Merge into existing cache
+      if (_drawsCache) {
+        const existingIds = new Set(_drawsCache.map(d => d._id));
+        const unique = newDraws.filter(d => !existingIds.has(d._id));
+        if (unique.length > 0) {
+          _drawsCache.push(...unique);
+          _drawsCache.sort((a, b) => new Date(b.date) - new Date(a.date));
+          _cacheTime = Date.now();
+          console.log(`   📊 Cache updated: ${_drawsCache.length} total draws (added ${unique.length} new)`);
+        }
+      }
+    })
+    .catch(e => {
+      _bgScrapeRunning = false;
+      console.log(`   ❌ Background scrape failed: ${e.message}`);
+    });
+}
+
+async function fetchAllDraws() {
+  // Return cache if still valid
+  if (_drawsCache && Date.now() - _cacheTime < CACHE_TTL) {
+    // Kick off background scrape to get newest draws (runs once)
+    startBackgroundScrape();
+    return _drawsCache;
   }
 
-  console.log(`📊 Total draws collected: ${allDraws.length} (${apiCount} API + ${allDraws.length - apiCount} scraped)`);
+  // Phase 1: fast API fetch — gets the server responding quickly
+  const allDraws = await fetchApiDraws();
 
   if (allDraws.length === 0) {
     throw new Error('Could not fetch any lottery data from API');
@@ -278,9 +314,15 @@ async function fetchAllDraws() {
   // Sort by date descending (newest first)
   allDraws.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+  // Cache immediately with API data so the app is usable right away
   _drawsCache = allDraws;
   _cacheTime = Date.now();
-  return allDraws;
+  console.log(`📊 Cache ready: ${allDraws.length} draws (API data). Scraping newest in background...`);
+
+  // Phase 2: kick off scrape in the background — will merge when done
+  startBackgroundScrape();
+
+  return _drawsCache;
 }
 
 async function fetchRecentDraws(count = 200) {

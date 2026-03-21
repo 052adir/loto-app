@@ -335,7 +335,7 @@
   <script>
     async function loadData() {
       try {
-        const res = await fetch('/api/analyze');
+        const res = await fetch('/api/analyze', { cache: 'no-store' });
         const data = await res.json();
         renderAll(data);
       } catch (err) {
@@ -478,9 +478,9 @@
 
     loadData();
 
-    // Register service worker for PWA
+    // Register service worker for PWA — updateViaCache ensures fresh SW on every visit
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {});
     }
   </script>
 </body>

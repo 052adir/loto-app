@@ -25,18 +25,25 @@ const MIME_TYPES = {
   '.webmanifest': 'application/manifest+json',
 };
 
+const API_HEADERS = {
+  'Content-Type': 'application/json',
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
-  // API routes
+  // API routes — always return fresh data, never cached
   if (url.pathname === '/api/analyze' && req.method === 'GET') {
     try {
       const draws = await fetchAllDraws();
       const rec = generateRecommendations(draws);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(200, API_HEADERS);
       res.end(JSON.stringify(rec));
     } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.writeHead(500, API_HEADERS);
       res.end(JSON.stringify({ error: err.message }));
     }
     return;
@@ -46,7 +53,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const draws = await fetchAllDraws();
       const rec = generateRecommendations(draws);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(200, API_HEADERS);
       res.end(JSON.stringify({
         line1: rec.line1,
         line2: rec.line2,
@@ -54,7 +61,7 @@ const server = http.createServer(async (req, res) => {
         message: formatWhatsAppMessage(rec),
       }));
     } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.writeHead(500, API_HEADERS);
       res.end(JSON.stringify({ error: err.message }));
     }
     return;
@@ -64,10 +71,10 @@ const server = http.createServer(async (req, res) => {
     try {
       const draws = await fetchAllDraws();
       const limit = parseInt(url.searchParams.get('limit')) || 20;
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(200, API_HEADERS);
       res.end(JSON.stringify(draws.slice(0, limit)));
     } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.writeHead(500, API_HEADERS);
       res.end(JSON.stringify({ error: err.message }));
     }
     return;
@@ -82,7 +89,12 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const data = fs.readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': contentType });
+    const headers = { 'Content-Type': contentType };
+    // Service worker and HTML must never be cached — ensures SW updates propagate
+    if (url.pathname === '/sw.js' || ext === '.html') {
+      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    }
+    res.writeHead(200, headers);
     res.end(data);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -90,11 +102,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// Start the server IMMEDIATELY — no blocking fetches
 server.listen(PORT, () => {
   console.log(`Lotto Israel running at http://localhost:${PORT}`);
+  console.log('🚀 Server is live. Data will load in the background...');
 
-  // Pre-fetch lottery data on startup so the first request is fast
+  // Fire-and-forget: fetch API data (fast), then scrape newest draws (slow, background)
   fetchAllDraws()
-    .then(draws => console.log(`📊 Startup: ${draws.length} draws loaded and cached.`))
-    .catch(err => console.error('⚠️  Startup pre-fetch failed:', err.message));
+    .then(draws => console.log(`✅ Initial data ready: ${draws.length} draws. Background scrape in progress...`))
+    .catch(err => console.error('⚠️  Initial data fetch failed:', err.message));
 });
