@@ -7,6 +7,8 @@
  */
 
 const PAIS_API = 'https://paisapi.azurewebsites.net';
+const PAIS_DRAW_URL = 'http://www.pais.co.il/lotto/currentlotto.aspx';
+const PAIS_API_LAST_ID = 3744; // Last draw available in the third-party API
 const TOTAL_NUMBERS = 37;
 const PICK_COUNT = 6;
 const STRONG_MAX = 7;
@@ -16,20 +18,224 @@ let _drawsCache = null;
 let _cacheTime = 0;
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
+/**
+ * Strip HTML tags and collapse whitespace to get plain text.
+ */
+function stripHtml(html) {
+  return html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Parse a single draw page from the official Pais website.
+ * Uses multiple extraction strategies for robustness.
+ * Returns a draw object or null if the page doesn't exist / can't be parsed.
+ */
+async function scrapeSingleDraw(id) {
+  try {
+    const res = await fetch(`${PAIS_DRAW_URL}?lotteryId=${id}`, {
+      signal: AbortSignal.timeout(12000),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'he-IL,he;q=0.9,en;q=0.5',
+      },
+    });
+    if (!res.ok) return null;
+
+    const html = await res.text();
+
+    // Detect error / empty pages
+    if (html.includes('הדף לא קיים') || html.includes('שגיאת שרת') || html.length < 1000) return null;
+
+    let winNumbers = null;
+    let strongNumber = null;
+
+    // --- Strategy 1: Extract from <li> elements inside an <ol> ---
+    const olMatches = html.match(/<ol[^>]*>([\s\S]*?)<\/ol>/g);
+    if (olMatches) {
+      for (const olBlock of olMatches) {
+        const liNums = [];
+        const liPattern = /<li[^>]*>([\s\S]*?)<\/li>/g;
+        let m;
+        while ((m = liPattern.exec(olBlock)) !== null) {
+          const numMatch = m[1].match(/(\d{1,2})/);
+          if (numMatch) liNums.push(parseInt(numMatch[1]));
+        }
+        const valid = liNums.filter(n => n >= 1 && n <= TOTAL_NUMBERS);
+        if (valid.length === 6) {
+          winNumbers = valid;
+          break;
+        }
+      }
+    }
+
+    // --- Strategy 2: Text-based — find 6 numbers between "הגרלת הלוטו" and "המספר החזק" ---
+    if (!winNumbers) {
+      const textBlock = stripHtml(html);
+      const lottoSection = textBlock.match(/הגרלת\s*הלוטו([\s\S]*?)המספר\s*החזק/);
+      if (lottoSection) {
+        const nums = lottoSection[1].match(/\b(\d{1,2})\b/g);
+        if (nums) {
+          const valid = nums.map(Number).filter(n => n >= 1 && n <= TOTAL_NUMBERS);
+          // Take the last 6 valid numbers (skipping ordinal list indices 1-6)
+          if (valid.length >= 6) {
+            // The page shows "1. 3 2. 7 3. 9 ..." so filter out the ordinal prefixes
+            // by taking only numbers that could be lotto numbers (may overlap with 1-6)
+            // The actual winning numbers are the ones AFTER each ordinal index.
+            // Since ordinals go 1,2,3,4,5,6 and values can also be 1-6, pair them:
+            const allNums = nums.map(Number);
+            if (allNums.length >= 12) {
+              // Ordered list format: [1, val, 2, val, 3, val, 4, val, 5, val, 6, val]
+              const extracted = [];
+              for (let i = 0; i < allNums.length - 1; i++) {
+                if (allNums[i] >= 1 && allNums[i] <= 6 && allNums[i] === extracted.length + 1) {
+                  const val = allNums[i + 1];
+                  if (val >= 1 && val <= TOTAL_NUMBERS) {
+                    extracted.push(val);
+                  }
+                }
+              }
+              if (extracted.length === 6) winNumbers = extracted;
+            }
+            // Fallback: if the page just lists 6 numbers without ordinals
+            if (!winNumbers && valid.length === 6) {
+              winNumbers = valid;
+            }
+            // Fallback: take the last 6 valid numbers
+            if (!winNumbers && valid.length > 6) {
+              winNumbers = valid.slice(valid.length - 6);
+            }
+          }
+        }
+      }
+    }
+
+    // --- Strategy 3: Find 6 consecutive number-like spans/divs near lotto markers ---
+    if (!winNumbers) {
+      // Look for sequences of numbers in span/div tags near the lottery section
+      const numPattern = /<(?:span|div|td|li|p)[^>]*>\s*(\d{1,2})\s*<\/(?:span|div|td|li|p)>/g;
+      const allPageNums = [];
+      let m;
+      while ((m = numPattern.exec(html)) !== null) {
+        const n = parseInt(m[1]);
+        if (n >= 1 && n <= TOTAL_NUMBERS) allPageNums.push({ n, idx: m.index });
+      }
+      // Find the first cluster of 6 valid lotto numbers appearing close together
+      for (let i = 0; i <= allPageNums.length - 6; i++) {
+        const cluster = allPageNums.slice(i, i + 6);
+        const spread = cluster[5].idx - cluster[0].idx;
+        if (spread < 2000) { // within 2000 chars of each other
+          const nums = cluster.map(c => c.n);
+          const unique = new Set(nums);
+          if (unique.size === 6) {
+            winNumbers = nums;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!winNumbers || winNumbers.length !== 6) return null;
+
+    // --- Extract strong number ---
+    // Try: number right after "המספר החזק"
+    const strongAfter = html.match(/המספר\s*החזק[\s\S]*?<[^>]*>\s*(\d)\s*</);
+    if (strongAfter) {
+      const n = parseInt(strongAfter[1]);
+      if (n >= 1 && n <= STRONG_MAX) strongNumber = n;
+    }
+    // Fallback: plain text after "המספר החזק"
+    if (!strongNumber) {
+      const textBlock = stripHtml(html);
+      const strongTextMatch = textBlock.match(/המספר\s*החזק\s*(\d)/);
+      if (strongTextMatch) {
+        const n = parseInt(strongTextMatch[1]);
+        if (n >= 1 && n <= STRONG_MAX) strongNumber = n;
+      }
+    }
+    // Fallback: number right before "המספר החזק"
+    if (!strongNumber) {
+      const textBlock = stripHtml(html);
+      const strongBefore = textBlock.match(/(\d)\s*המספר\s*החזק/);
+      if (strongBefore) {
+        const n = parseInt(strongBefore[1]);
+        if (n >= 1 && n <= STRONG_MAX) strongNumber = n;
+      }
+    }
+
+    if (!strongNumber) return null;
+
+    // --- Extract date (dd/mm/yyyy) ---
+    let date = null;
+    const dateMatch = html.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (dateMatch) {
+      date = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}T12:00:00.000Z`;
+    }
+
+    return { _id: id, date, winNumbers, strongNumber };
+  } catch (e) {
+    console.log(`   ⚠️  Draw ${id} scrape error: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Scrape multiple draws in parallel batches from the official Pais website.
+ * Starts from startId and keeps going until we hit 3 consecutive empty batches.
+ */
+async function scrapeNewDraws(startId) {
+  const draws = [];
+  const batchSize = 10;
+  const maxConsecutiveFails = 3; // 3 empty batches = 30 missing IDs = definitely past the end
+  let consecutiveFails = 0;
+  let currentId = startId;
+
+  console.log(`   📡 Scraping batches of ${batchSize} starting at ID ${startId}...`);
+
+  while (consecutiveFails < maxConsecutiveFails) {
+    // Fetch a batch in parallel
+    const batch = [];
+    for (let i = 0; i < batchSize; i++) {
+      batch.push(scrapeSingleDraw(currentId + i));
+    }
+    const results = await Promise.all(batch);
+
+    let batchSuccessCount = 0;
+    for (const draw of results) {
+      if (draw) {
+        draws.push(draw);
+        batchSuccessCount++;
+      }
+    }
+
+    if (batchSuccessCount > 0) {
+      console.log(`   ✅ Batch ${currentId}-${currentId + batchSize - 1}: ${batchSuccessCount} draws found`);
+      consecutiveFails = 0;
+    } else {
+      consecutiveFails++;
+      console.log(`   ⏭️  Batch ${currentId}-${currentId + batchSize - 1}: empty (${consecutiveFails}/${maxConsecutiveFails})`);
+    }
+
+    currentId += batchSize;
+  }
+
+  return draws;
+}
+
 async function fetchAllDraws() {
   // Return cache if still valid
   if (_drawsCache && Date.now() - _cacheTime < CACHE_TTL) {
     return _drawsCache;
   }
 
-  // Fetch in batches by ID range (most recent draw is ~3744)
-  // Fetch from ID 1 to 4000 in chunks of 500
   const allDraws = [];
-  const batchSize = 500;
-  const maxId = 4000;
 
-  for (let start = 1; start <= maxId; start += batchSize) {
-    const end = Math.min(start + batchSize - 1, maxId);
+  // --- Phase 1: Fetch historical draws from third-party API (IDs 1-3744) ---
+  console.log(`📦 Phase 1: Fetching historical draws from third-party API (IDs 1-${PAIS_API_LAST_ID})...`);
+  const batchSize = 500;
+  let apiCount = 0;
+  for (let start = 1; start <= PAIS_API_LAST_ID; start += batchSize) {
+    const end = Math.min(start + batchSize - 1, PAIS_API_LAST_ID);
     try {
       const res = await fetch(`${PAIS_API}/lotto/byID/${start}/${end}`, {
         signal: AbortSignal.timeout(15000),
@@ -38,13 +244,32 @@ async function fetchAllDraws() {
         const data = await res.json();
         if (Array.isArray(data)) {
           allDraws.push(...data);
+          apiCount += data.length;
         }
       }
     } catch (e) {
-      // Skip failed batch, continue with others
-      console.log(`Batch ${start}-${end} skipped: ${e.message}`);
+      console.log(`   ⚠️  API batch ${start}-${end} skipped: ${e.message}`);
     }
   }
+  console.log(`   ✅ API returned ${apiCount} historical draws`);
+
+  // --- Phase 2: Scrape newer draws directly from official Pais website ---
+  console.log(`🌐 Phase 2: Scraping new draws from pais.co.il (starting at ID ${PAIS_API_LAST_ID + 1})...`);
+  try {
+    const newDraws = await scrapeNewDraws(PAIS_API_LAST_ID + 1);
+    if (newDraws.length > 0) {
+      const maxScrapedId = Math.max(...newDraws.map(d => d._id));
+      const latestDate = newDraws.sort((a, b) => new Date(b.date) - new Date(a.date))[0].date;
+      console.log(`   ✅ Scraped ${newDraws.length} new draws (IDs ${PAIS_API_LAST_ID + 1}-${maxScrapedId}, latest: ${latestDate})`);
+      allDraws.push(...newDraws);
+    } else {
+      console.log('   ⚠️  No new draws scraped. The scraping selectors may need updating.');
+    }
+  } catch (e) {
+    console.log(`   ❌ Scraping failed: ${e.message}`);
+  }
+
+  console.log(`📊 Total draws collected: ${allDraws.length} (${apiCount} API + ${allDraws.length - apiCount} scraped)`);
 
   if (allDraws.length === 0) {
     throw new Error('Could not fetch any lottery data from API');
@@ -193,34 +418,48 @@ function generateRecommendations(draws) {
   const freq = frequencyAnalysis(draws);
   const trend = recentTrendAnalysis(draws, 100);
   const overdue = overdueAnalysis(draws);
+  const hotPairs = hotPairsAnalysis(draws);
 
   // Combined score for each number
   const scores = new Array(TOTAL_NUMBERS + 1).fill(0);
   const strongScores = new Array(STRONG_MAX + 1).fill(0);
 
-  // Frequency score (normalized 0-100)
+  // Frequency score (30% weight)
   const maxFreq = freq.ranked[0].count;
   for (const item of freq.ranked) {
-    scores[item.number] += (item.count / maxFreq) * 35; // 35% weight
+    scores[item.number] += (item.count / maxFreq) * 30;
   }
 
-  // Trend score (normalized 0-100)
+  // Trend score (35% weight)
   const maxTrend = trend.ranked[0].score;
   for (const item of trend.ranked) {
-    scores[item.number] += (item.score / maxTrend) * 40; // 40% weight
+    scores[item.number] += (item.score / maxTrend) * 35;
   }
 
-  // Overdue score (normalized 0-100)
+  // Overdue score (20% weight)
   const maxOverdue = overdue.ranked[0].drawsSinceLastSeen;
   if (maxOverdue > 0 && maxOverdue !== Infinity) {
     for (const item of overdue.ranked) {
       if (item.drawsSinceLastSeen !== Infinity) {
-        scores[item.number] += (item.drawsSinceLastSeen / maxOverdue) * 25; // 25% weight
+        scores[item.number] += (item.drawsSinceLastSeen / maxOverdue) * 20;
       }
     }
   }
 
-  // Strong number scores
+  // Hot Pairs boost (15% weight)
+  // Count how many times each number appears in the top 20 pairs
+  const pairBoost = new Array(TOTAL_NUMBERS + 1).fill(0);
+  for (const p of hotPairs) {
+    const [a, b] = p.pair.split('-').map(Number);
+    pairBoost[a] += p.count;
+    pairBoost[b] += p.count;
+  }
+  const maxPairBoost = Math.max(...pairBoost.filter(v => v > 0), 1);
+  for (let i = 1; i <= TOTAL_NUMBERS; i++) {
+    scores[i] += (pairBoost[i] / maxPairBoost) * 15;
+  }
+
+  // Strong number scores (unchanged — pairs don't apply to strong numbers)
   const maxStrongFreq = freq.strongRanked[0].count;
   for (const item of freq.strongRanked) {
     strongScores[item.number] += (item.count / maxStrongFreq) * 35;
@@ -280,7 +519,7 @@ function generateRecommendations(draws) {
       topFrequent: freq.ranked.slice(0, 10),
       topTrending: trend.ranked.slice(0, 10),
       topOverdue: overdue.ranked.slice(0, 10),
-      hotPairs: hotPairsAnalysis(draws),
+      hotPairs,
       allScores: allRanked,
       strongScores: allStrongRanked,
     },
