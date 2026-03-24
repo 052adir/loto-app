@@ -1,343 +1,50 @@
 /**
  * Israeli Lotto Analyzer
- * Fetches historical data from PaisAPI and calculates recommended numbers
+ * Loads historical data from public/draws.json and calculates recommended numbers
  * using multiple statistical methods.
  *
  * Lotto format: 6 numbers from 1-37 + 1 strong number from 1-7
  */
 
-const PAIS_API = 'https://paisapi.azurewebsites.net';
-const PAIS_DRAW_URL = 'http://www.pais.co.il/lotto/currentlotto.aspx';
-const PAIS_API_LAST_ID = 3744; // Last draw available in the third-party API
+const fs = require('fs');
+const path = require('path');
+
+const DRAWS_PATH = path.join(__dirname, 'public', 'draws.json');
 const TOTAL_NUMBERS = 37;
 const PICK_COUNT = 6;
 const STRONG_MAX = 7;
 
-// Realistic browser headers to bypass basic WAF / bot detection
-const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-  'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-  'Accept-Encoding': 'gzip, deflate',
-  'Connection': 'keep-alive',
-  'Upgrade-Insecure-Requests': '1',
-  'Sec-Fetch-Dest': 'document',
-  'Sec-Fetch-Mode': 'navigate',
-  'Sec-Fetch-Site': 'none',
-  'Sec-Fetch-User': '?1',
-  'Cache-Control': 'max-age=0',
-};
-
-// In-memory cache to avoid repeated slow API calls
+// In-memory cache
 let _drawsCache = null;
-let _cacheTime = 0;
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 /**
- * Strip HTML tags and collapse whitespace to get plain text.
+ * Load all draws from the static JSON file (public/draws.json).
+ * No network requests — data is updated offline via update_data.js.
  */
-function stripHtml(html) {
-  return html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-}
+function fetchAllDraws() {
+  if (_drawsCache) return _drawsCache;
 
-/**
- * Parse a single draw page from the official Pais website.
- * Uses multiple extraction strategies for robustness.
- * Returns a draw object or null if the page doesn't exist / can't be parsed.
- */
-async function scrapeSingleDraw(id) {
-  try {
-    const res = await fetch(`${PAIS_DRAW_URL}?lotteryId=${id}`, {
-      signal: AbortSignal.timeout(12000),
-      headers: BROWSER_HEADERS,
-    });
-    if (!res.ok) return null;
-
-    const html = await res.text();
-
-    // Detect error / empty pages
-    if (html.includes('הדף לא קיים') || html.includes('שגיאת שרת') || html.length < 1000) return null;
-
-    let winNumbers = null;
-    let strongNumber = null;
-
-    // --- Strategy 1: Extract from <li> elements inside an <ol> ---
-    const olMatches = html.match(/<ol[^>]*>([\s\S]*?)<\/ol>/g);
-    if (olMatches) {
-      for (const olBlock of olMatches) {
-        const liNums = [];
-        const liPattern = /<li[^>]*>([\s\S]*?)<\/li>/g;
-        let m;
-        while ((m = liPattern.exec(olBlock)) !== null) {
-          const numMatch = m[1].match(/(\d{1,2})/);
-          if (numMatch) liNums.push(parseInt(numMatch[1]));
-        }
-        const valid = liNums.filter(n => n >= 1 && n <= TOTAL_NUMBERS);
-        if (valid.length === 6) {
-          winNumbers = valid;
-          break;
-        }
-      }
-    }
-
-    // --- Strategy 2: Text-based — find 6 numbers between "הגרלת הלוטו" and "המספר החזק" ---
-    if (!winNumbers) {
-      const textBlock = stripHtml(html);
-      const lottoSection = textBlock.match(/הגרלת\s*הלוטו([\s\S]*?)המספר\s*החזק/);
-      if (lottoSection) {
-        const nums = lottoSection[1].match(/\b(\d{1,2})\b/g);
-        if (nums) {
-          const valid = nums.map(Number).filter(n => n >= 1 && n <= TOTAL_NUMBERS);
-          // Take the last 6 valid numbers (skipping ordinal list indices 1-6)
-          if (valid.length >= 6) {
-            // The page shows "1. 3 2. 7 3. 9 ..." so filter out the ordinal prefixes
-            // by taking only numbers that could be lotto numbers (may overlap with 1-6)
-            // The actual winning numbers are the ones AFTER each ordinal index.
-            // Since ordinals go 1,2,3,4,5,6 and values can also be 1-6, pair them:
-            const allNums = nums.map(Number);
-            if (allNums.length >= 12) {
-              // Ordered list format: [1, val, 2, val, 3, val, 4, val, 5, val, 6, val]
-              const extracted = [];
-              for (let i = 0; i < allNums.length - 1; i++) {
-                if (allNums[i] >= 1 && allNums[i] <= 6 && allNums[i] === extracted.length + 1) {
-                  const val = allNums[i + 1];
-                  if (val >= 1 && val <= TOTAL_NUMBERS) {
-                    extracted.push(val);
-                  }
-                }
-              }
-              if (extracted.length === 6) winNumbers = extracted;
-            }
-            // Fallback: if the page just lists 6 numbers without ordinals
-            if (!winNumbers && valid.length === 6) {
-              winNumbers = valid;
-            }
-            // Fallback: take the last 6 valid numbers
-            if (!winNumbers && valid.length > 6) {
-              winNumbers = valid.slice(valid.length - 6);
-            }
-          }
-        }
-      }
-    }
-
-    // --- Strategy 3: Find 6 consecutive number-like spans/divs near lotto markers ---
-    if (!winNumbers) {
-      // Look for sequences of numbers in span/div tags near the lottery section
-      const numPattern = /<(?:span|div|td|li|p)[^>]*>\s*(\d{1,2})\s*<\/(?:span|div|td|li|p)>/g;
-      const allPageNums = [];
-      let m;
-      while ((m = numPattern.exec(html)) !== null) {
-        const n = parseInt(m[1]);
-        if (n >= 1 && n <= TOTAL_NUMBERS) allPageNums.push({ n, idx: m.index });
-      }
-      // Find the first cluster of 6 valid lotto numbers appearing close together
-      for (let i = 0; i <= allPageNums.length - 6; i++) {
-        const cluster = allPageNums.slice(i, i + 6);
-        const spread = cluster[5].idx - cluster[0].idx;
-        if (spread < 2000) { // within 2000 chars of each other
-          const nums = cluster.map(c => c.n);
-          const unique = new Set(nums);
-          if (unique.size === 6) {
-            winNumbers = nums;
-            break;
-          }
-        }
-      }
-    }
-
-    if (!winNumbers || winNumbers.length !== 6) return null;
-
-    // --- Extract strong number ---
-    // Try: number right after "המספר החזק"
-    const strongAfter = html.match(/המספר\s*החזק[\s\S]*?<[^>]*>\s*(\d)\s*</);
-    if (strongAfter) {
-      const n = parseInt(strongAfter[1]);
-      if (n >= 1 && n <= STRONG_MAX) strongNumber = n;
-    }
-    // Fallback: plain text after "המספר החזק"
-    if (!strongNumber) {
-      const textBlock = stripHtml(html);
-      const strongTextMatch = textBlock.match(/המספר\s*החזק\s*(\d)/);
-      if (strongTextMatch) {
-        const n = parseInt(strongTextMatch[1]);
-        if (n >= 1 && n <= STRONG_MAX) strongNumber = n;
-      }
-    }
-    // Fallback: number right before "המספר החזק"
-    if (!strongNumber) {
-      const textBlock = stripHtml(html);
-      const strongBefore = textBlock.match(/(\d)\s*המספר\s*החזק/);
-      if (strongBefore) {
-        const n = parseInt(strongBefore[1]);
-        if (n >= 1 && n <= STRONG_MAX) strongNumber = n;
-      }
-    }
-
-    if (!strongNumber) return null;
-
-    // --- Extract date (dd/mm/yyyy) ---
-    let date = null;
-    const dateMatch = html.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if (dateMatch) {
-      date = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}T12:00:00.000Z`;
-    }
-
-    return { _id: id, date, winNumbers, strongNumber };
-  } catch (e) {
-    console.log(`   ⚠️  Draw ${id} scrape error: ${e.message}`);
-    return null;
-  }
-}
-
-/**
- * Scrape multiple draws in parallel batches from the official Pais website.
- * Starts from startId and keeps going until we hit 3 consecutive empty batches.
- */
-async function scrapeNewDraws(startId) {
-  const draws = [];
-  const batchSize = 10;
-  const maxConsecutiveFails = 3; // 3 empty batches = 30 missing IDs = definitely past the end
-  let consecutiveFails = 0;
-  let currentId = startId;
-
-  console.log(`   📡 Scraping batches of ${batchSize} starting at ID ${startId}...`);
-
-  while (consecutiveFails < maxConsecutiveFails) {
-    // Fetch a batch in parallel
-    const batch = [];
-    for (let i = 0; i < batchSize; i++) {
-      batch.push(scrapeSingleDraw(currentId + i));
-    }
-    const results = await Promise.all(batch);
-
-    let batchSuccessCount = 0;
-    for (const draw of results) {
-      if (draw) {
-        draws.push(draw);
-        batchSuccessCount++;
-      }
-    }
-
-    if (batchSuccessCount > 0) {
-      console.log(`   ✅ Batch ${currentId}-${currentId + batchSize - 1}: ${batchSuccessCount} draws found`);
-      consecutiveFails = 0;
-    } else {
-      consecutiveFails++;
-      console.log(`   ⏭️  Batch ${currentId}-${currentId + batchSize - 1}: empty (${consecutiveFails}/${maxConsecutiveFails})`);
-    }
-
-    currentId += batchSize;
+  if (!fs.existsSync(DRAWS_PATH)) {
+    throw new Error(`draws.json not found at ${DRAWS_PATH}. Run "npm run update" locally first.`);
   }
 
-  return draws;
-}
+  const raw = fs.readFileSync(DRAWS_PATH, 'utf-8');
+  const draws = JSON.parse(raw);
 
-// Track whether the background scrape has been kicked off
-let _bgScrapeRunning = false;
-let _bgScrapeComplete = false;
-
-/**
- * Phase 1 only: fast fetch from third-party API (IDs 1-3744).
- * Returns quickly so the server can start and respond to health checks.
- */
-async function fetchApiDraws() {
-  const draws = [];
-  console.log(`📦 Phase 1: Fetching historical draws from third-party API (IDs 1-${PAIS_API_LAST_ID})...`);
-  const batchSize = 500;
-  for (let start = 1; start <= PAIS_API_LAST_ID; start += batchSize) {
-    const end = Math.min(start + batchSize - 1, PAIS_API_LAST_ID);
-    try {
-      const res = await fetch(`${PAIS_API}/lotto/byID/${start}/${end}`, {
-        signal: AbortSignal.timeout(15000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          draws.push(...data);
-        }
-      }
-    } catch (e) {
-      console.log(`   ⚠️  API batch ${start}-${end} skipped: ${e.message}`);
-    }
-  }
-  console.log(`   ✅ API returned ${draws.length} historical draws`);
-  return draws;
-}
-
-/**
- * Phase 2: scrape newer draws from official Pais website.
- * Runs in the background — merges results into existing cache when done.
- */
-function startBackgroundScrape() {
-  if (_bgScrapeRunning || _bgScrapeComplete) return;
-  _bgScrapeRunning = true;
-
-  console.log(`🌐 Background: starting scrape of new draws from pais.co.il (ID ${PAIS_API_LAST_ID + 1}+)...`);
-
-  scrapeNewDraws(PAIS_API_LAST_ID + 1)
-    .then(newDraws => {
-      _bgScrapeRunning = false;
-      _bgScrapeComplete = true;
-
-      if (newDraws.length === 0) {
-        console.log('   ⚠️  Background scrape: no new draws found.');
-        return;
-      }
-
-      const maxScrapedId = Math.max(...newDraws.map(d => d._id));
-      const sorted = [...newDraws].sort((a, b) => new Date(b.date) - new Date(a.date));
-      console.log(`   ✅ Background scrape: ${newDraws.length} new draws (up to ID ${maxScrapedId}, latest: ${sorted[0].date})`);
-
-      // Merge into existing cache
-      if (_drawsCache) {
-        const existingIds = new Set(_drawsCache.map(d => d._id));
-        const unique = newDraws.filter(d => !existingIds.has(d._id));
-        if (unique.length > 0) {
-          _drawsCache.push(...unique);
-          _drawsCache.sort((a, b) => new Date(b.date) - new Date(a.date));
-          _cacheTime = Date.now();
-          console.log(`   📊 Cache updated: ${_drawsCache.length} total draws (added ${unique.length} new)`);
-        }
-      }
-    })
-    .catch(e => {
-      _bgScrapeRunning = false;
-      console.log(`   ❌ Background scrape failed: ${e.message}`);
-    });
-}
-
-async function fetchAllDraws() {
-  // Return cache if still valid
-  if (_drawsCache && Date.now() - _cacheTime < CACHE_TTL) {
-    // Kick off background scrape to get newest draws (runs once)
-    startBackgroundScrape();
-    return _drawsCache;
+  if (!Array.isArray(draws) || draws.length === 0) {
+    throw new Error('draws.json is empty or invalid. Run "npm run update" to regenerate it.');
   }
 
-  // Phase 1: fast API fetch — gets the server responding quickly
-  const allDraws = await fetchApiDraws();
+  // Ensure sorted newest-first
+  draws.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  if (allDraws.length === 0) {
-    throw new Error('Could not fetch any lottery data from API');
-  }
-
-  // Sort by date descending (newest first)
-  allDraws.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-  // Cache immediately with API data so the app is usable right away
-  _drawsCache = allDraws;
-  _cacheTime = Date.now();
-  console.log(`📊 Cache ready: ${allDraws.length} draws (API data). Scraping newest in background...`);
-
-  // Phase 2: kick off scrape in the background — will merge when done
-  startBackgroundScrape();
-
+  _drawsCache = draws;
+  console.log(`📊 Loaded ${draws.length} draws from draws.json`);
   return _drawsCache;
 }
 
-async function fetchRecentDraws(count = 200) {
-  const all = await fetchAllDraws();
+function fetchRecentDraws(count = 200) {
+  const all = fetchAllDraws();
   return all.slice(0, count);
 }
 
@@ -621,18 +328,16 @@ module.exports = {
 
 // If run directly, show analysis
 if (require.main === module) {
-  (async () => {
-    console.log('🔄 Fetching all historical draws...');
-    const draws = await fetchAllDraws();
-    console.log(`✅ Fetched ${draws.length} draws\n`);
+  console.log('🔄 Loading draws from draws.json...');
+  const draws = fetchAllDraws();
+  console.log(`✅ Loaded ${draws.length} draws\n`);
 
-    const rec = generateRecommendations(draws);
-    console.log(formatWhatsAppMessage(rec));
+  const rec = generateRecommendations(draws);
+  console.log(formatWhatsAppMessage(rec));
 
-    console.log('\n--- Detailed Scores ---');
-    console.log('Top 15 numbers by combined score:');
-    for (const item of rec.analysis.allScores.slice(0, 15)) {
-      console.log(`  #${item.number.toString().padStart(2)}: ${item.score}`);
-    }
-  })();
+  console.log('\n--- Detailed Scores ---');
+  console.log('Top 15 numbers by combined score:');
+  for (const item of rec.analysis.allScores.slice(0, 15)) {
+    console.log(`  #${item.number.toString().padStart(2)}: ${item.score}`);
+  }
 }

@@ -102,13 +102,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// Start the server IMMEDIATELY — no blocking fetches
+// Start the server — data loads synchronously from draws.json (no network)
 server.listen(PORT, () => {
   console.log(`Lotto Israel running at http://localhost:${PORT}`);
-  console.log('🚀 Server is live. Data will load in the background...');
-
-  // Fire-and-forget: fetch API data (fast), then scrape newest draws (slow, background)
-  fetchAllDraws()
-    .then(draws => console.log(`✅ Initial data ready: ${draws.length} draws. Background scrape in progress...`))
-    .catch(err => console.error('⚠️  Initial data fetch failed:', err.message));
+  try {
+    const draws = fetchAllDraws();
+    console.log(`✅ Data ready: ${draws.length} draws loaded from draws.json`);
+  } catch (err) {
+    console.error('⚠️  Data load failed:', err.message);
+  }
 });

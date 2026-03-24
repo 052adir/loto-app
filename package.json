@@ -1,16 +1,13 @@
 {
   "name": "loto-israel",
   "version": "1.0.0",
-  "description": "Israeli Lotto analyzer with WhatsApp notifications",
+  "description": "Israeli Lotto analyzer - smart statistical analysis",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "analyze": "node analyze.js",
-    "notify": "node notify.js"
+    "update": "node update_data.js"
   },
-  "dependencies": {
-    "dotenv": "^16.6.1",
-    "node-cron": "^4.2.1"
-  }
+  "dependencies": {}
 }
