@@ -9,6 +9,7 @@ const path = require('path');
 const {
   fetchAllDraws,
   generateRecommendations,
+  evaluateLatestDraw,
   formatWhatsAppMessage,
 } = require('./analyze');
 
@@ -40,8 +41,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const draws = await fetchAllDraws();
       const rec = generateRecommendations(draws);
+      const lastDrawEval = evaluateLatestDraw(draws);
       res.writeHead(200, API_HEADERS);
-      res.end(JSON.stringify(rec));
+      res.end(JSON.stringify({ ...rec, lastDrawEval }));
     } catch (err) {
       res.writeHead(500, API_HEADERS);
       res.end(JSON.stringify({ error: err.message }));

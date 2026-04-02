@@ -312,6 +312,166 @@
       padding: 20px;
       font-size: 0.85em;
     }
+
+    /* Last Draw Evaluation Section */
+    .eval-section {
+      background: linear-gradient(145deg, #1a1a50, #222260);
+      border: 2px solid #3a3a8a;
+      border-radius: 16px;
+      padding: 25px;
+      margin-bottom: 30px;
+    }
+
+    .eval-section h3 {
+      text-align: center;
+      font-size: 1.4em;
+      color: #ffd700;
+      margin-bottom: 8px;
+    }
+
+    .eval-draw-info {
+      text-align: center;
+      color: #8888cc;
+      font-size: 0.95em;
+      margin-bottom: 20px;
+    }
+
+    .eval-lines {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 600px) {
+      .eval-lines { grid-template-columns: 1fr; }
+    }
+
+    .eval-line-card {
+      background: rgba(20, 20, 60, 0.7);
+      border: 1px solid #3a3a7a;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .eval-line-card h4 {
+      color: #ccccff;
+      font-size: 1.05em;
+      margin-bottom: 10px;
+    }
+
+    .eval-balls {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .eval-ball {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 1.05em;
+      transition: transform 0.2s;
+    }
+
+    .eval-ball.hit {
+      background: linear-gradient(145deg, #22aa44, #119933);
+      border: 2px solid #44dd66;
+      color: #fff;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    }
+
+    .eval-ball.miss {
+      background: rgba(60, 40, 80, 0.6);
+      border: 2px solid #555577;
+      color: #777799;
+    }
+
+    .eval-ball.strong-hit {
+      background: linear-gradient(145deg, #cc8800, #aa6600);
+      border: 2px solid #ffaa00;
+      color: #fff;
+    }
+
+    .eval-ball.strong-miss {
+      background: rgba(80, 50, 30, 0.5);
+      border: 2px solid #665533;
+      color: #887755;
+    }
+
+    .eval-hit-count {
+      font-size: 1.1em;
+      font-weight: bold;
+      margin-top: 6px;
+    }
+
+    .eval-hit-count .hit-num { color: #44dd66; }
+    .eval-hit-count .miss-num { color: #887766; }
+
+    .eval-bar-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .eval-bar {
+      display: flex;
+      width: 120px;
+      height: 14px;
+      border-radius: 7px;
+      overflow: hidden;
+      background: rgba(40, 40, 80, 0.8);
+    }
+
+    .eval-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #22aa44, #44dd66);
+      border-radius: 7px 0 0 7px;
+      transition: width 0.6s ease;
+    }
+
+    .eval-bar-label {
+      font-size: 0.85em;
+      color: #aaaacc;
+    }
+
+    .eval-actual-row {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+
+    .eval-actual-row .label {
+      color: #8888cc;
+      font-size: 0.9em;
+      margin-bottom: 6px;
+    }
+
+    .eval-summary {
+      text-align: center;
+      padding: 12px;
+      background: rgba(30, 30, 70, 0.6);
+      border-radius: 10px;
+      margin-top: 10px;
+    }
+
+    .eval-summary .big-stat {
+      font-size: 2em;
+      font-weight: bold;
+      color: #ffd700;
+    }
+
+    .eval-summary .big-label {
+      font-size: 0.9em;
+      color: #8888cc;
+    }
   </style>
 </head>
 <body>
@@ -345,7 +505,7 @@
     }
 
     function renderAll(data) {
-      const { line1, line2, analysis } = data;
+      const { line1, line2, analysis, lastDrawEval } = data;
       const html = [];
 
       // Recommendations
@@ -389,6 +549,71 @@
           <button class="btn btn-gold" onclick="sendNotification()">📱 שלח WhatsApp עכשיו</button>
         </div>
       `);
+
+      // Last Draw Evaluation Section
+      if (lastDrawEval) {
+        const ev = lastDrawEval;
+        const drawDate = ev.date ? new Date(ev.date).toLocaleDateString('he-IL') : `#${ev.drawId}`;
+
+        html.push(`<div class="eval-section">`);
+        html.push(`<h3>📋 ניתוח הגרלה אחרונה</h3>`);
+        html.push(`<div class="eval-draw-info">הגרלה #${ev.drawId} — ${drawDate}</div>`);
+
+        // Actual winning numbers
+        html.push(`<div class="eval-actual-row">`);
+        html.push(`<div class="label">מספרים שעלו בהגרלה</div>`);
+        html.push(`<div class="eval-balls">`);
+        for (const n of ev.actual.numbers) {
+          html.push(`<div class="eval-ball hit">${n}</div>`);
+        }
+        html.push(`<div class="eval-ball strong-hit">${ev.actual.strong}</div>`);
+        html.push(`</div></div>`);
+
+        // Line 1 and Line 2 evaluation
+        html.push(`<div class="eval-lines">`);
+
+        // Line 1
+        html.push(`<div class="eval-line-card">`);
+        html.push(`<h4>שורה 1 — חיזוי</h4>`);
+        html.push(`<div class="eval-balls">`);
+        for (const d of ev.line1.detail) {
+          html.push(`<div class="eval-ball ${d.hit ? 'hit' : 'miss'}">${d.number}</div>`);
+        }
+        const s1cls = ev.line1.strong.hit ? 'strong-hit' : 'strong-miss';
+        html.push(`<div class="eval-ball ${s1cls}">${ev.line1.strong.predicted}</div>`);
+        html.push(`</div>`);
+        html.push(`<div class="eval-hit-count"><span class="${ev.line1.hitsCount > 0 ? 'hit-num' : 'miss-num'}">${ev.line1.hitsCount}/6</span> מספרים זוהו`);
+        if (ev.line1.strong.hit) html.push(` + חזק!`);
+        html.push(`</div>`);
+        html.push(`<div class="eval-bar-container"><div class="eval-bar"><div class="eval-bar-fill" style="width:${(ev.line1.hitsCount / 6 * 100)}%"></div></div><span class="eval-bar-label">${Math.round(ev.line1.hitsCount / 6 * 100)}%</span></div>`);
+        html.push(`</div>`);
+
+        // Line 2
+        html.push(`<div class="eval-line-card">`);
+        html.push(`<h4>שורה 2 — חיזוי</h4>`);
+        html.push(`<div class="eval-balls">`);
+        for (const d of ev.line2.detail) {
+          html.push(`<div class="eval-ball ${d.hit ? 'hit' : 'miss'}">${d.number}</div>`);
+        }
+        const s2cls = ev.line2.strong.hit ? 'strong-hit' : 'strong-miss';
+        html.push(`<div class="eval-ball ${s2cls}">${ev.line2.strong.predicted}</div>`);
+        html.push(`</div>`);
+        html.push(`<div class="eval-hit-count"><span class="${ev.line2.hitsCount > 0 ? 'hit-num' : 'miss-num'}">${ev.line2.hitsCount}/6</span> מספרים זוהו`);
+        if (ev.line2.strong.hit) html.push(` + חזק!`);
+        html.push(`</div>`);
+        html.push(`<div class="eval-bar-container"><div class="eval-bar"><div class="eval-bar-fill" style="width:${(ev.line2.hitsCount / 6 * 100)}%"></div></div><span class="eval-bar-label">${Math.round(ev.line2.hitsCount / 6 * 100)}%</span></div>`);
+        html.push(`</div>`);
+
+        html.push(`</div>`); // .eval-lines
+
+        // Combined summary
+        html.push(`<div class="eval-summary">`);
+        html.push(`<div class="big-stat">${ev.totalUniqueHits}/${ev.totalUniquePredicted}</div>`);
+        html.push(`<div class="big-label">סה"כ מספרים ייחודיים שנחזו נכון</div>`);
+        html.push(`</div>`);
+
+        html.push(`</div>`); // .eval-section
+      }
 
       // Heatmap
       html.push(`<h3 class="section-title">🗺️ מפת חום - ציון משולב לכל מספר</h3>`);

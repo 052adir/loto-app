@@ -207,8 +207,134 @@ async function scrapeNewDraws(startId) {
   return draws;
 }
 
+/**
+ * Load previous draws from disk (before this update).
+ */
+function loadPreviousDraws() {
+  try {
+    if (fs.existsSync(OUTPUT_PATH)) {
+      const raw = fs.readFileSync(OUTPUT_PATH, 'utf-8');
+      const draws = JSON.parse(raw);
+      if (Array.isArray(draws) && draws.length > 0) return draws;
+    }
+  } catch (_) { /* ignore */ }
+  return [];
+}
+
+/**
+ * Print a clear performance report comparing the algorithm's prediction
+ * against the actual latest draw.
+ */
+function printPerformanceReport(allDrawsSorted) {
+  // Lazy-load analyze.js (only needed for backtest)
+  const analyzer = require('./analyze');
+
+  const latestDraw = allDrawsSorted[0];
+  const historicalForPrediction = allDrawsSorted.slice(1);
+
+  if (historicalForPrediction.length < 50) {
+    console.log('\n⏭️  Not enough historical draws for backtesting (need 50+).\n');
+    return;
+  }
+
+  console.log('\n' + '='.repeat(64));
+  console.log('  📊  BACKTEST PERFORMANCE REPORT');
+  console.log('='.repeat(64));
+
+  // --- Single-draw evaluation: what would we have predicted for the latest draw? ---
+  const prediction = analyzer.generateRecommendations(historicalForPrediction);
+  const actualNumbers = new Set(latestDraw.winNumbers);
+  const actualStrong = latestDraw.strongNumber;
+
+  const line1Hits = prediction.line1.numbers.filter(n => actualNumbers.has(n));
+  const line2Hits = prediction.line2.numbers.filter(n => actualNumbers.has(n));
+  const strong1Hit = prediction.line1.strong === actualStrong;
+  const strong2Hit = prediction.line2.strong === actualStrong;
+
+  const allPredicted = new Set([...prediction.line1.numbers, ...prediction.line2.numbers]);
+  const totalUniqueHits = [...allPredicted].filter(n => actualNumbers.has(n));
+
+  const dateStr = latestDraw.date ? new Date(latestDraw.date).toLocaleDateString('he-IL') : `ID ${latestDraw._id}`;
+
+  console.log(`\n  Latest draw: #${latestDraw._id} (${dateStr})`);
+  console.log(`  Actual numbers:  [${latestDraw.winNumbers.join(', ')}]  Strong: ${actualStrong}`);
+  console.log('');
+  console.log(`  Line 1 predicted: [${prediction.line1.numbers.join(', ')}]  Strong: ${prediction.line1.strong}`);
+  console.log(`  Line 1 hits:      ${line1Hits.length}/6 numbers ${line1Hits.length > 0 ? '→ ' + line1Hits.join(', ') : '(none)'}  |  Strong: ${strong1Hit ? 'HIT ✓' : 'MISS ✗'}`);
+  console.log('');
+  console.log(`  Line 2 predicted: [${prediction.line2.numbers.join(', ')}]  Strong: ${prediction.line2.strong}`);
+  console.log(`  Line 2 hits:      ${line2Hits.length}/6 numbers ${line2Hits.length > 0 ? '→ ' + line2Hits.join(', ') : '(none)'}  |  Strong: ${strong2Hit ? 'HIT ✓' : 'MISS ✗'}`);
+  console.log('');
+  console.log(`  Combined unique hits: ${totalUniqueHits.length}/${allPredicted.size} predicted numbers matched`);
+
+  // Visual hit bar
+  const hitBar = (hits, total) => {
+    const filled = '█'.repeat(hits);
+    const empty = '░'.repeat(total - hits);
+    return `[${filled}${empty}]`;
+  };
+  console.log(`\n  Line 1: ${hitBar(line1Hits.length, 6)} ${line1Hits.length}/6`);
+  console.log(`  Line 2: ${hitBar(line2Hits.length, 6)} ${line2Hits.length}/6`);
+
+  // --- Broader backtest over last 30 draws ---
+  console.log('\n' + '-'.repeat(64));
+  console.log('  📈  ROLLING BACKTEST (last 30 draws)');
+  console.log('-'.repeat(64));
+
+  const bt = analyzer.backtestOverRange(allDrawsSorted, 30);
+  if (bt.stats) {
+    const s = bt.stats;
+    console.log(`  Draws tested: ${s.drawsTested}`);
+    console.log(`  Line 1: avg ${s.line1.avgHits}/6 hits | Strong hit rate: ${s.line1.strongHitRate}%`);
+    console.log(`  Line 2: avg ${s.line2.avgHits}/6 hits | Strong hit rate: ${s.line2.strongHitRate}%`);
+    console.log(`  Combined unique: avg ${s.combined.avgUniqueHits} hits per draw`);
+    console.log('');
+    console.log('  Method contributions (top-6 hits from each):');
+    const mc = s.methodContrib;
+    const maxBar = Math.max(mc.frequency, mc.trend, mc.overdue, mc.pairs, 1);
+    const bar = (val) => '█'.repeat(Math.round((val / maxBar) * 20)).padEnd(20, '░');
+    console.log(`    Frequency : ${bar(mc.frequency)} ${mc.frequency}`);
+    console.log(`    Trend     : ${bar(mc.trend)} ${mc.trend}`);
+    console.log(`    Overdue   : ${bar(mc.overdue)} ${mc.overdue}`);
+    console.log(`    Pairs     : ${bar(mc.pairs)} ${mc.pairs}`);
+
+    // --- Adaptive weight update ---
+    console.log('\n' + '-'.repeat(64));
+    console.log('  ⚙️   ADAPTIVE WEIGHT UPDATE');
+    console.log('-'.repeat(64));
+
+    const adaptive = analyzer.computeAdaptiveWeights(allDrawsSorted, 50);
+    const prev = analyzer.loadAdaptiveWeights();
+
+    console.log(`  Previous: freq=${prev.weights.frequency}% trend=${prev.weights.trend}% overdue=${prev.weights.overdue}% pairs=${prev.weights.pairs}%`);
+    console.log(`  New:      freq=${adaptive.weights.frequency}% trend=${adaptive.weights.trend}% overdue=${adaptive.weights.overdue}% pairs=${adaptive.weights.pairs}%`);
+
+    // Show deltas
+    const delta = (key) => {
+      const d = adaptive.weights[key] - prev.weights[key];
+      if (Math.abs(d) < 0.1) return '  (=)';
+      return d > 0 ? ` (+${d.toFixed(1)})` : ` (${d.toFixed(1)})`;
+    };
+    console.log(`  Deltas:   freq${delta('frequency')} trend${delta('trend')} overdue${delta('overdue')} pairs${delta('pairs')}`);
+
+    analyzer.saveAdaptiveWeights(adaptive.weights, adaptive.strongWeights, {
+      methodContrib: adaptive.methodContrib,
+      lastBacktestDraws: s.drawsTested,
+    });
+    console.log('  ✅ Adaptive weights saved to public/adaptive_weights.json');
+  } else {
+    console.log('  ⏭️  Not enough data for rolling backtest.');
+  }
+
+  console.log('\n' + '='.repeat(64) + '\n');
+}
+
 (async () => {
   console.log('🔄 Lotto Data Updater — fetching all draws...\n');
+
+  // Load previous draws for comparison
+  const previousDraws = loadPreviousDraws();
+  const previousIds = new Set(previousDraws.map(d => d._id));
 
   // Phase 1: API draws
   const apiDraws = await fetchApiDraws();
@@ -227,5 +353,20 @@ async function scrapeNewDraws(startId) {
   // Save to public/draws.json
   fs.writeFileSync(OUTPUT_PATH, JSON.stringify(allDraws, null, 2), 'utf-8');
 
+  // Detect new draws
+  const newDraws = allDraws.filter(d => !previousIds.has(d._id));
+  if (newDraws.length > 0) {
+    console.log(`\n🆕 ${newDraws.length} new draw(s) detected since last update:`);
+    for (const d of newDraws.slice(0, 5)) {
+      const dateStr = d.date ? new Date(d.date).toLocaleDateString('he-IL') : '?';
+      console.log(`   #${d._id} (${dateStr}): [${d.winNumbers.join(', ')}] Strong: ${d.strongNumber}`);
+    }
+  }
+
   console.log(`\n✅ Done! Saved ${allDraws.length} draws to ${OUTPUT_PATH}`);
+
+  // Run performance report (backtest against latest draw)
+  if (allDraws.length >= 50) {
+    printPerformanceReport(allDraws);
+  }
 })();
