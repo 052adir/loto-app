@@ -43,7 +43,12 @@ const server = http.createServer(async (req, res) => {
       const draws = await fetchAllDraws();
       const rec = generateRecommendations(draws);
       const lastDrawEval = evaluateLatestDraw(draws);
-      const algorithmInsights = generateAlgorithmInsights(draws);
+      let algorithmInsights = null;
+      try {
+        algorithmInsights = generateAlgorithmInsights(draws);
+      } catch (e) {
+        console.error('⚠️  algorithmInsights error:', e.message);
+      }
       res.writeHead(200, API_HEADERS);
       res.end(JSON.stringify({ ...rec, lastDrawEval, algorithmInsights }));
     } catch (err) {

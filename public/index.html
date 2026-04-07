@@ -474,91 +474,86 @@
     }
 
     /* Algorithm Insights */
-    .eval-insights {
-      margin-top: 18px;
-      background: rgba(20, 20, 55, 0.7);
-      border: 1px solid #3a3a7a;
-      border-radius: 12px;
-      padding: 16px 20px;
+    .algo-insights-box {
+      margin-top: 15px;
+      padding: 15px 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,215,0,0.2);
+      border-radius: 10px;
+      text-align: right;
+      direction: rtl;
     }
 
-    .eval-insights h4 {
+    .algo-insights-box h4 {
       color: #ffd700;
       font-size: 1.1em;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      margin: 0 0 10px 0;
     }
 
-    .eval-insights ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    .eval-insights li {
+    .algo-insights-box .insight-line {
       position: relative;
-      padding: 7px 0 7px 22px;
+      padding: 6px 20px 6px 0;
+      margin: 0;
       color: #ccccee;
       font-size: 0.95em;
-      line-height: 1.55;
+      line-height: 1.6;
       border-bottom: 1px solid rgba(255,255,255,0.04);
     }
 
-    .eval-insights li:last-child {
+    .algo-insights-box .insight-line:last-of-type {
       border-bottom: none;
     }
 
-    .eval-insights li::before {
+    .algo-insights-box .insight-line::before {
       content: '';
       position: absolute;
       right: 0;
-      top: 14px;
+      top: 15px;
       width: 8px;
       height: 8px;
       border-radius: 50%;
       background: #ffd700;
     }
 
-    .eval-insights .weight-bars {
+    .algo-insights-box .weight-bars {
       display: flex;
-      gap: 10px;
-      margin-top: 12px;
+      gap: 12px;
+      margin-top: 14px;
       flex-wrap: wrap;
       justify-content: center;
     }
 
-    .eval-insights .wb-item {
+    .algo-insights-box .wb-item {
       display: flex;
       flex-direction: column;
       align-items: center;
-      min-width: 70px;
+      min-width: 72px;
     }
 
-    .eval-insights .wb-label {
-      font-size: 0.78em;
-      color: #8888bb;
+    .algo-insights-box .wb-label {
+      font-size: 0.8em;
+      color: #9999bb;
       margin-bottom: 4px;
     }
 
-    .eval-insights .wb-track {
-      width: 60px;
-      height: 8px;
+    .algo-insights-box .wb-track {
+      width: 64px;
+      height: 10px;
       background: rgba(40, 40, 80, 0.9);
-      border-radius: 4px;
+      border-radius: 5px;
       overflow: hidden;
     }
 
-    .eval-insights .wb-fill {
+    .algo-insights-box .wb-fill {
       height: 100%;
-      border-radius: 4px;
+      border-radius: 5px;
       transition: width 0.5s ease;
     }
 
-    .eval-insights .wb-val {
+    .algo-insights-box .wb-val {
       font-size: 0.78em;
       color: #aaaacc;
-      margin-top: 2px;
+      margin-top: 3px;
     }
 
     /* Next Draw Banner */
@@ -769,16 +764,15 @@
         html.push(`<div class="big-label">סה"כ מספרים ייחודיים שנחזו נכון</div>`);
         html.push(`</div>`);
 
-        // Algorithm Insights
+        // Algorithm Insights — always render the box, fill from data or show fallback
+        html.push(`<div class="algo-insights-box">`);
+        html.push(`<h4>🧠 מסקנות האלגוריתם:</h4>`);
+
         if (algorithmInsights && algorithmInsights.insights && algorithmInsights.insights.length > 0) {
           const ai = algorithmInsights;
-          html.push(`<div class="eval-insights">`);
-          html.push(`<h4>🧠 מסקנות האלגוריתם:</h4>`);
-          html.push(`<ul>`);
           for (const insight of ai.insights) {
-            html.push(`<li>${insight}</li>`);
+            html.push(`<p class="insight-line">${insight}</p>`);
           }
-          html.push(`</ul>`);
 
           // Weight bars visualization
           if (ai.deltas && ai.deltas.length > 0) {
@@ -787,20 +781,23 @@
             for (const d of ai.deltas) {
               const color = colors[d.method] || '#8888cc';
               const pct = Math.min(d.weight, 50);
-              const deltaStr = d.delta > 0 ? '+' + d.delta : d.delta === 0 ? '=' : '' + d.delta;
+              const sign = d.delta > 0 ? '+' : d.delta === 0 ? '' : '';
+              const deltaStr = d.delta === 0 ? '=' : sign + d.delta;
               html.push(`
                 <div class="wb-item">
                   <div class="wb-label">${d.name}</div>
                   <div class="wb-track"><div class="wb-fill" style="width:${pct * 2}%; background:${color};"></div></div>
-                  <div class="wb-val">${d.weight.toFixed(1)}% (${deltaStr})</div>
+                  <div class="wb-val">${Number(d.weight).toFixed(1)}% (${deltaStr})</div>
                 </div>
               `);
             }
             html.push(`</div>`);
           }
-
-          html.push(`</div>`); // .eval-insights
+        } else {
+          html.push(`<p class="insight-line">המערכת מנתחת את הביצועים ומעדכנת את המשקלות באופן אוטומטי בכל עדכון נתונים.</p>`);
         }
+
+        html.push(`</div>`); // .algo-insights-box
 
         html.push(`</div>`); // .eval-section
       }
