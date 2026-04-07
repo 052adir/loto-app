@@ -525,6 +525,88 @@ function evaluateLatestDraw(allDraws) {
 }
 
 /**
+ * Generate human-readable Hebrew insights based on adaptive weight changes.
+ * Compares current adaptive weights against defaults, and summarizes
+ * which methods the algorithm is leaning into or away from.
+ */
+function generateAlgorithmInsights(allDraws) {
+  if (!allDraws || allDraws.length < 100) return null;
+
+  const adaptive = computeAdaptiveWeights(allDraws, 50);
+  const prev = loadAdaptiveWeights();
+  const newW = adaptive.weights;
+  const oldW = prev.weights;
+
+  const METHOD_NAMES = {
+    frequency: 'התדירות',
+    trend: 'המגמה',
+    overdue: 'המספרים המאחרים',
+    pairs: 'הזוגות',
+  };
+
+  const METHOD_DESCRIPTIONS = {
+    frequency: 'מספרים שמופיעים הכי הרבה פעמים בהיסטוריה',
+    trend: 'מספרים שנמצאים במגמת עלייה בהגרלות האחרונות',
+    overdue: 'מספרים שלא הופיעו כבר זמן רב',
+    pairs: 'זוגות מספרים שנוטים להופיע יחד',
+  };
+
+  const insights = [];
+
+  // Find the biggest movers (delta between new and old weights)
+  const deltas = Object.keys(newW).map(key => ({
+    key,
+    delta: newW[key] - oldW[key],
+    newVal: newW[key],
+  }));
+  deltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  // Significant increases
+  const increased = deltas.filter(d => d.delta > 1.5);
+  const decreased = deltas.filter(d => d.delta < -1.5);
+
+  for (const d of increased) {
+    insights.push(
+      `המערכת זיהתה ששיטת ${METHOD_NAMES[d.key]} (${METHOD_DESCRIPTIONS[d.key]}) מדויקת יותר לאחרונה, ולכן משקלה הועלה ל-${d.newVal.toFixed(1)}% לקראת ההגרלה הבאה.`
+    );
+  }
+
+  for (const d of decreased) {
+    insights.push(
+      `שיטת ${METHOD_NAMES[d.key]} הראתה פחות דיוק בהגרלות האחרונות, ולכן משקלה הורד ל-${d.newVal.toFixed(1)}%.`
+    );
+  }
+
+  // If no significant changes, report stability
+  if (insights.length === 0) {
+    insights.push('כל השיטות מציגות ביצועים יציבים — המשקלות נשארו ללא שינוי משמעותי.');
+  }
+
+  // Always add a summary of the dominant method
+  const dominant = deltas.reduce((best, d) => d.newVal > best.newVal ? d : best, deltas[0]);
+  insights.push(
+    `השיטה המשפיעה ביותר כרגע: ${METHOD_NAMES[dominant.key]} (${dominant.newVal.toFixed(1)}%).`
+  );
+
+  // Add backtest hit-rate context if available
+  if (adaptive.backtestStats) {
+    const s = adaptive.backtestStats;
+    const bestLine = s.line1.avgHits >= s.line2.avgHits ? 1 : 2;
+    const bestAvg = Math.max(s.line1.avgHits, s.line2.avgHits);
+    insights.push(
+      `בבדיקה לאחור על ${s.drawsTested} הגרלות אחרונות, שורה ${bestLine} הצליחה בממוצע ${bestAvg} מתוך 6 מספרים.`
+    );
+  }
+
+  return {
+    insights,
+    weights: newW,
+    previousWeights: oldW,
+    deltas: deltas.map(d => ({ method: d.key, name: METHOD_NAMES[d.key], delta: parseFloat(d.delta.toFixed(1)), weight: d.newVal })),
+  };
+}
+
+/**
  * Format recommendations as WhatsApp-friendly message
  */
 function formatWhatsAppMessage(rec) {
@@ -562,6 +644,7 @@ module.exports = {
   hotPairsAnalysis,
   generateRecommendations,
   evaluateLatestDraw,
+  generateAlgorithmInsights,
   formatWhatsAppMessage,
   backtestSingleDraw,
   backtestOverRange,

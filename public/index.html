@@ -473,6 +473,94 @@
       color: #8888cc;
     }
 
+    /* Algorithm Insights */
+    .eval-insights {
+      margin-top: 18px;
+      background: rgba(20, 20, 55, 0.7);
+      border: 1px solid #3a3a7a;
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+
+    .eval-insights h4 {
+      color: #ffd700;
+      font-size: 1.1em;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .eval-insights ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .eval-insights li {
+      position: relative;
+      padding: 7px 0 7px 22px;
+      color: #ccccee;
+      font-size: 0.95em;
+      line-height: 1.55;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .eval-insights li:last-child {
+      border-bottom: none;
+    }
+
+    .eval-insights li::before {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 14px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ffd700;
+    }
+
+    .eval-insights .weight-bars {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .eval-insights .wb-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 70px;
+    }
+
+    .eval-insights .wb-label {
+      font-size: 0.78em;
+      color: #8888bb;
+      margin-bottom: 4px;
+    }
+
+    .eval-insights .wb-track {
+      width: 60px;
+      height: 8px;
+      background: rgba(40, 40, 80, 0.9);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .eval-insights .wb-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+
+    .eval-insights .wb-val {
+      font-size: 0.78em;
+      color: #aaaacc;
+      margin-top: 2px;
+    }
+
     /* Next Draw Banner */
     .next-draw-banner {
       text-align: center;
@@ -560,7 +648,7 @@
     }
 
     function renderAll(data) {
-      const { line1, line2, analysis, lastDrawEval } = data;
+      const { line1, line2, analysis, lastDrawEval, algorithmInsights } = data;
       const html = [];
 
       // Next Draw Date Banner
@@ -680,6 +768,39 @@
         html.push(`<div class="big-stat">${ev.totalUniqueHits}/${ev.totalUniquePredicted}</div>`);
         html.push(`<div class="big-label">סה"כ מספרים ייחודיים שנחזו נכון</div>`);
         html.push(`</div>`);
+
+        // Algorithm Insights
+        if (algorithmInsights && algorithmInsights.insights && algorithmInsights.insights.length > 0) {
+          const ai = algorithmInsights;
+          html.push(`<div class="eval-insights">`);
+          html.push(`<h4>🧠 מסקנות האלגוריתם:</h4>`);
+          html.push(`<ul>`);
+          for (const insight of ai.insights) {
+            html.push(`<li>${insight}</li>`);
+          }
+          html.push(`</ul>`);
+
+          // Weight bars visualization
+          if (ai.deltas && ai.deltas.length > 0) {
+            const colors = { frequency: '#4488ff', trend: '#44dd66', overdue: '#ffaa00', pairs: '#dd44aa' };
+            html.push(`<div class="weight-bars">`);
+            for (const d of ai.deltas) {
+              const color = colors[d.method] || '#8888cc';
+              const pct = Math.min(d.weight, 50);
+              const deltaStr = d.delta > 0 ? '+' + d.delta : d.delta === 0 ? '=' : '' + d.delta;
+              html.push(`
+                <div class="wb-item">
+                  <div class="wb-label">${d.name}</div>
+                  <div class="wb-track"><div class="wb-fill" style="width:${pct * 2}%; background:${color};"></div></div>
+                  <div class="wb-val">${d.weight.toFixed(1)}% (${deltaStr})</div>
+                </div>
+              `);
+            }
+            html.push(`</div>`);
+          }
+
+          html.push(`</div>`); // .eval-insights
+        }
 
         html.push(`</div>`); // .eval-section
       }

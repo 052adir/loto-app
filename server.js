@@ -10,6 +10,7 @@ const {
   fetchAllDraws,
   generateRecommendations,
   evaluateLatestDraw,
+  generateAlgorithmInsights,
   formatWhatsAppMessage,
 } = require('./analyze');
 
@@ -42,8 +43,9 @@ const server = http.createServer(async (req, res) => {
       const draws = await fetchAllDraws();
       const rec = generateRecommendations(draws);
       const lastDrawEval = evaluateLatestDraw(draws);
+      const algorithmInsights = generateAlgorithmInsights(draws);
       res.writeHead(200, API_HEADERS);
-      res.end(JSON.stringify({ ...rec, lastDrawEval }));
+      res.end(JSON.stringify({ ...rec, lastDrawEval, algorithmInsights }));
     } catch (err) {
       res.writeHead(500, API_HEADERS);
       res.end(JSON.stringify({ error: err.message }));
