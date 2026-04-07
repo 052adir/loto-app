@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.lotteryextreme.com)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npm install:*)",
+      "WebFetch(domain:paisapi.azurewebsites.net)",
+      "Bash(cmd /c \"mkdir C:\\\\Users\\\\User\\\\Desktop\\\\LOTO\\\\public\\\\icons\")",
+      "Bash(powershell -Command \"New-Item -ItemType Directory -Force -Path ''C:\\\\Users\\\\User\\\\Desktop\\\\LOTO\\\\public\\\\icons''\")",
+      "WebFetch(domain:www.pais.co.il)",
+      "WebFetch(domain:api.pais.co.il)",
+      "WebFetch(domain:pais.co.il)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(node -e \":*)",
+      "Bash(node update_data.js)",
+      "Bash(node -c:*)",
+      "Bash(node -e:*)",
+      "Bash(node --check:*)"
+    ]
+  }
+}

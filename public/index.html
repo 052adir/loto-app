@@ -472,6 +472,36 @@
       font-size: 0.9em;
       color: #8888cc;
     }
+
+    /* Next Draw Banner */
+    .next-draw-banner {
+      text-align: center;
+      background: linear-gradient(135deg, rgba(255,215,0,0.12), rgba(255,140,0,0.10));
+      border: 2px solid rgba(255,215,0,0.35);
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+    }
+
+    .next-draw-banner .ndb-label {
+      font-size: 0.95em;
+      color: #aaaacc;
+      margin-bottom: 4px;
+    }
+
+    .next-draw-banner .ndb-date {
+      font-size: 1.5em;
+      font-weight: bold;
+      background: linear-gradient(90deg, #ffd700, #ff8c00);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .next-draw-banner .ndb-day {
+      font-size: 1.05em;
+      color: #ccccff;
+      margin-top: 2px;
+    }
   </style>
 </head>
 <body>
@@ -504,9 +534,48 @@
       }
     }
 
+    function getNextDrawDate() {
+      // Israeli Lotto draws: Tuesday (2), Thursday (4), Saturday (6)
+      const drawDays = [2, 4, 6];
+      const now = new Date();
+      // Work in Israel timezone (UTC+3 / UTC+2 depending on DST)
+      const ilOffset = now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
+      const ilNow = new Date(ilOffset);
+
+      for (let d = 0; d <= 7; d++) {
+        const candidate = new Date(ilNow);
+        candidate.setDate(ilNow.getDate() + d);
+        if (drawDays.includes(candidate.getDay())) {
+          // If today is a draw day, only show it if before 22:00 (draw hasn't happened yet)
+          if (d === 0 && ilNow.getHours() >= 22) continue;
+          return candidate;
+        }
+      }
+      return null;
+    }
+
+    function formatHebrewDay(date) {
+      const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+      return 'יום ' + days[date.getDay()];
+    }
+
     function renderAll(data) {
       const { line1, line2, analysis, lastDrawEval } = data;
       const html = [];
+
+      // Next Draw Date Banner
+      const nextDraw = getNextDrawDate();
+      if (nextDraw) {
+        const dateStr = nextDraw.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+        const dayName = formatHebrewDay(nextDraw);
+        html.push(`
+          <div class="next-draw-banner">
+            <div class="ndb-label">🎯 מיועד להגרלה שתערך ב-</div>
+            <div class="ndb-date">${dateStr}</div>
+            <div class="ndb-day">${dayName}</div>
+          </div>
+        `);
+      }
 
       // Recommendations
       html.push(`
