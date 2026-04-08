@@ -618,8 +618,8 @@
     }
 
     function getNextDrawDate() {
-      // Israeli Lotto draws: Tuesday (2) and Saturday (6) only
-      const drawDays = [2, 6];
+      // Israeli Lotto draws: Tuesday (2), Thursday (4), Saturday (6)
+      const drawDays = [2, 4, 6];
       const now = new Date();
       // Work in Israel timezone (UTC+3 / UTC+2 depending on DST)
       const ilOffset = now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
