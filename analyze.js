@@ -148,6 +148,83 @@ function overdueAnalysis(draws) {
 }
 
 /**
+ * Structural balance helpers — assess whether a 6-number combo "looks like"
+ * a realistic Lotto draw. Based on stats from real historical draws:
+ *   - Sum of 6 numbers from 1-37 typically falls between ~80 and ~160 (mean ≈ 114).
+ *   - Most draws contain 2-4 odd numbers (out of 6).
+ *   - Most draws have a spread across low (1-12), mid (13-25), high (26-37).
+ *   - Long consecutive runs (3+ in a row) are uncommon.
+ *
+ * These checks don't change the probability of winning (lotto is truly random),
+ * but they avoid degenerate-looking picks like {1,2,3,4,5,6}.
+ */
+function isStructurallyBalanced(nums) {
+  if (!nums || nums.length !== PICK_COUNT) return false;
+  const sorted = [...nums].sort((a, b) => a - b);
+
+  // Sum check
+  const sum = sorted.reduce((s, n) => s + n, 0);
+  if (sum < 80 || sum > 160) return false;
+
+  // Odd/even balance: 2-4 odd numbers
+  const odds = sorted.filter((n) => n % 2 === 1).length;
+  if (odds < 2 || odds > 4) return false;
+
+  // Range spread: at least one in each of low / mid / high
+  const low = sorted.filter((n) => n <= 12).length;
+  const mid = sorted.filter((n) => n > 12 && n <= 25).length;
+  const high = sorted.filter((n) => n > 25).length;
+  if (low === 0 || mid === 0 || high === 0) return false;
+
+  // Avoid 4+ consecutive
+  let run = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === sorted[i - 1] + 1) {
+      run++;
+      if (run >= 4) return false;
+    } else {
+      run = 1;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Weighted random sampling without replacement.
+ * Each item is picked with probability proportional to its weight,
+ * which means high-scoring numbers dominate but lower-scoring ones still
+ * have a chance — producing variation between runs while keeping picks
+ * grounded in the algorithm's scores.
+ */
+function weightedSampleWithoutReplacement(items, k, getWeight) {
+  const pool = items.slice();
+  const picks = [];
+
+  while (picks.length < k && pool.length > 0) {
+    const totalWeight = pool.reduce((s, x) => s + Math.max(0, getWeight(x)), 0);
+    if (totalWeight <= 0) {
+      // All remaining weights are 0 — pick uniformly at random
+      const idx = Math.floor(Math.random() * pool.length);
+      picks.push(pool[idx]);
+      pool.splice(idx, 1);
+      continue;
+    }
+    let r = Math.random() * totalWeight;
+    for (let j = 0; j < pool.length; j++) {
+      r -= Math.max(0, getWeight(pool[j]));
+      if (r <= 0) {
+        picks.push(pool[j]);
+        pool.splice(j, 1);
+        break;
+      }
+    }
+  }
+
+  return picks;
+}
+
+/**
  * Method 4: Hot Pairs - pairs of numbers that often appear together
  */
 function hotPairsAnalysis(draws) {
@@ -280,22 +357,63 @@ function generateRecommendations(draws, customWeights, customStrongWeights) {
   }
   allStrongRanked.sort((a, b) => b.score - a.score);
 
-  // Line 1: Top 6 by combined score
+  // Line 1: Top 6 by combined score (deterministic — your "best guess" line)
   const line1 = allRanked.slice(0, PICK_COUNT)
     .map(x => x.number)
     .sort((a, b) => a - b);
   const strong1 = allStrongRanked[0].number;
 
-  // Line 2: Mix of top frequency + top overdue (diversified pick)
-  const usedInLine1 = new Set(line1);
-  const line2candidates = allRanked.filter(x => !usedInLine1.has(x.number));
-  // Take top 3 from remaining by score, then top 3 overdue not already picked
-  const top3remaining = line2candidates.slice(0, 3).map(x => x.number);
-  const overdueNotPicked = overdue.ranked
-    .filter(x => !usedInLine1.has(x.number) && !top3remaining.includes(x.number));
-  const top3overdue = overdueNotPicked.slice(0, 3).map(x => x.number);
-  const line2 = [...top3remaining, ...top3overdue].sort((a, b) => a - b);
-  const strong2 = allStrongRanked[1] ? allStrongRanked[1].number : allStrongRanked[0].number;
+  // ---- Line 2: weighted random sample from the top half by score, with
+  // structural-balance validation. Produces variation week-to-week while
+  // still leaning on the algorithm's high-scoring numbers. ----
+  //
+  // Strategy:
+  //   - Candidate pool: top 20 numbers by combined score (covers ~half the
+  //     range, so there's room to vary).
+  //   - Each candidate's weight = its score^1.5 (slight power boost so top
+  //     numbers are favored, but not overwhelmingly).
+  //   - Sample 6 without replacement.
+  //   - Reject and retry if the combo fails structural balance (sum, parity,
+  //     range spread, no 4-in-a-row). Give up after MAX_ATTEMPTS and accept
+  //     whatever was sampled — never block.
+  const TOP_POOL_SIZE = 20;
+  const MAX_ATTEMPTS = 200;
+  const POWER_BOOST = 1.5;
+  const candidates = allRanked.slice(0, TOP_POOL_SIZE);
+
+  let line2 = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const picked = weightedSampleWithoutReplacement(
+      candidates,
+      PICK_COUNT,
+      (x) => Math.pow(Math.max(0.01, x.score), POWER_BOOST)
+    ).map((x) => x.number);
+
+    if (isStructurallyBalanced(picked)) {
+      line2 = picked.sort((a, b) => a - b);
+      break;
+    }
+  }
+
+  // Fallback: if no balanced combo was found, take whatever the last sample was
+  if (!line2) {
+    line2 = weightedSampleWithoutReplacement(
+      candidates,
+      PICK_COUNT,
+      (x) => Math.pow(Math.max(0.01, x.score), POWER_BOOST)
+    )
+      .map((x) => x.number)
+      .sort((a, b) => a - b);
+  }
+
+  // Strong number for line 2: weighted random among top 3 strong numbers
+  const strongTop3 = allStrongRanked.slice(0, 3);
+  const strong2Pick = weightedSampleWithoutReplacement(
+    strongTop3,
+    1,
+    (x) => Math.max(0.01, x.score)
+  )[0];
+  const strong2 = strong2Pick ? strong2Pick.number : allStrongRanked[0].number;
 
   return {
     line1: { numbers: line1, strong: strong1 },
