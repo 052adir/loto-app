@@ -247,6 +247,130 @@ function hotPairsAnalysis(draws) {
   return pairs.slice(0, 20);
 }
 
+/**
+ * Method 5: Statistical Significance (z-score) Analysis  — the "brain" of line 1.
+ *
+ * In a FAIR lotto draw every number is equally likely, so "most frequent" or
+ * "overdue" carry no predictive power (the ball has no memory — leaning on
+ * overdue numbers is the gambler's fallacy). The ONLY thing that could give a
+ * real edge is a physical bias: a number that appears MORE often than pure
+ * chance can explain, across the whole history.
+ *
+ * For each number we model its appearances as Binomial(N, p):
+ *   - main numbers: p = PICK_COUNT / TOTAL_NUMBERS  (6/37)
+ *   - strong number: p = 1 / STRONG_MAX             (1/7)
+ * The z-score = (observed - expected) / standardDeviation tells us how many
+ * standard deviations a number sits above (or below) chance. |z| > ~2 means
+ * the deviation is unlikely to be random noise (~95% confidence).
+ *
+ * We expose a positive 0-100 "smartScore" (= 50 + 10*z, clamped) so the UI
+ * heatmap and selection logic can rank numbers: 50 ≈ exactly as chance predicts,
+ * >50 = over-represented (mild real-bias signal), <50 = under-represented.
+ */
+function signalAnalysis(draws) {
+  const N = draws.length;
+  const freq = new Array(TOTAL_NUMBERS + 1).fill(0);
+  const strongFreq = new Array(STRONG_MAX + 1).fill(0);
+
+  for (const draw of draws) {
+    for (const num of draw.winNumbers) freq[num]++;
+    if (draw.strongNumber) strongFreq[draw.strongNumber]++;
+  }
+
+  const zToScore = (z) => parseFloat(Math.max(0, Math.min(100, 50 + 10 * z)).toFixed(2));
+
+  const pMain = PICK_COUNT / TOTAL_NUMBERS;
+  const sdMain = Math.sqrt(N * pMain * (1 - pMain));
+  const ranked = [];
+  for (let i = 1; i <= TOTAL_NUMBERS; i++) {
+    const expected = N * pMain;
+    const z = sdMain > 0 ? (freq[i] - expected) / sdMain : 0;
+    ranked.push({ number: i, observed: freq[i], expected: parseFloat(expected.toFixed(1)), z: parseFloat(z.toFixed(2)), score: zToScore(z) });
+  }
+  ranked.sort((a, b) => b.score - a.score);
+
+  const pStrong = 1 / STRONG_MAX;
+  const sdStrong = Math.sqrt(N * pStrong * (1 - pStrong));
+  const strongRanked = [];
+  for (let i = 1; i <= STRONG_MAX; i++) {
+    const expected = N * pStrong;
+    const z = sdStrong > 0 ? (strongFreq[i] - expected) / sdStrong : 0;
+    strongRanked.push({ number: i, observed: strongFreq[i], expected: parseFloat(expected.toFixed(1)), z: parseFloat(z.toFixed(2)), score: zToScore(z) });
+  }
+  strongRanked.sort((a, b) => b.score - a.score);
+
+  return { ranked, strongRanked };
+}
+
+/**
+ * Build the SMART line (line 1): a deterministic, fully-reasoned decision.
+ *
+ * Instead of randomly sampling, we take the top CANDIDATE_POOL numbers by
+ * statistical signal and EXHAUSTIVELY search every 6-number subset of them
+ * (C(12,6) = 924 combos — trivial) for the one that:
+ *   (a) passes structural balance (realistic sum / parity / spread / no long run), AND
+ *   (b) maximizes total signal score.
+ * This is a genuine upgrade in decision quality: it considers the combo as a
+ * whole rather than picking 6 numbers independently, and it never falls back on
+ * the gambler's-fallacy "overdue" heuristic.
+ */
+function buildSmartLine(signalRanked) {
+  const CANDIDATE_POOL = 12;
+  const candidates = signalRanked.slice(0, CANDIDATE_POOL);
+
+  let best = null;
+  let bestScore = -Infinity;
+  // Enumerate all 6-subsets of the candidate pool.
+  const idx = [0, 1, 2, 3, 4, 5];
+  const n = candidates.length;
+  const combo = () => idx.map((i) => candidates[i]);
+  const advance = () => {
+    // odometer-style next combination
+    let i = PICK_COUNT - 1;
+    while (i >= 0 && idx[i] === n - PICK_COUNT + i) i--;
+    if (i < 0) return false;
+    idx[i]++;
+    for (let j = i + 1; j < PICK_COUNT; j++) idx[j] = idx[j - 1] + 1;
+    return true;
+  };
+
+  do {
+    const set = combo();
+    const nums = set.map((x) => x.number);
+    if (isStructurallyBalanced(nums)) {
+      const total = set.reduce((s, x) => s + x.score, 0);
+      if (total > bestScore) {
+        bestScore = total;
+        best = nums.slice().sort((a, b) => a - b);
+      }
+    }
+  } while (advance());
+
+  // Fallback: no balanced subset found — take the top 6 by signal.
+  if (!best) {
+    best = candidates.slice(0, PICK_COUNT).map((x) => x.number).sort((a, b) => a - b);
+  }
+  return best;
+}
+
+/**
+ * Build the RANDOM line (line 2): a fair, uniform random pick — exactly what an
+ * honest "quick pick" is. 6 distinct numbers from 1-37 + a strong number 1-7,
+ * every combination equally likely. No analysis, no bias, no pretense.
+ */
+function buildRandomLine() {
+  const pool = [];
+  for (let i = 1; i <= TOTAL_NUMBERS; i++) pool.push(i);
+  // Fisher-Yates partial shuffle for the first PICK_COUNT slots.
+  for (let i = 0; i < PICK_COUNT; i++) {
+    const j = i + Math.floor(Math.random() * (pool.length - i));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const numbers = pool.slice(0, PICK_COUNT).sort((a, b) => a - b);
+  const strong = 1 + Math.floor(Math.random() * STRONG_MAX);
+  return { numbers, strong };
+}
+
 // Default weights for the combined scoring
 const DEFAULT_WEIGHTS = { frequency: 30, trend: 35, overdue: 20, pairs: 15 };
 const DEFAULT_STRONG_WEIGHTS = { frequency: 35, trend: 40, overdue: 25 };
@@ -287,137 +411,26 @@ function generateRecommendations(draws, customWeights, customStrongWeights) {
   const overdue = overdueAnalysis(draws);
   const hotPairs = hotPairsAnalysis(draws);
 
-  // Combined score for each number
-  const scores = new Array(TOTAL_NUMBERS + 1).fill(0);
-  const strongScores = new Array(STRONG_MAX + 1).fill(0);
+  // ---- The "brain": statistical-significance ranking (see signalAnalysis). ----
+  // Numbers are ranked by how far their real appearance rate deviates from pure
+  // chance, NOT by raw frequency or by the gambler's-fallacy "overdue" idea.
+  const signal = signalAnalysis(draws);
+  const allRanked = signal.ranked.map((x) => ({ number: x.number, score: x.score, z: x.z, observed: x.observed, expected: x.expected }));
+  const allStrongRanked = signal.strongRanked.map((x) => ({ number: x.number, score: x.score, z: x.z, observed: x.observed, expected: x.expected }));
 
-  // Frequency score
-  const maxFreq = freq.ranked[0].count;
-  for (const item of freq.ranked) {
-    scores[item.number] += (item.count / maxFreq) * w.frequency;
-  }
+  // ---- Line 1 (SMART): deterministic best-balanced subset of the top-signal
+  // numbers. Considers the whole combo, not 6 independent picks. ----
+  const line1 = buildSmartLine(signal.ranked);
+  const strong1 = signal.strongRanked[0].number;
 
-  // Trend score
-  const maxTrend = trend.ranked[0].score;
-  for (const item of trend.ranked) {
-    scores[item.number] += (item.score / maxTrend) * w.trend;
-  }
-
-  // Overdue score
-  const maxOverdue = overdue.ranked[0].drawsSinceLastSeen;
-  if (maxOverdue > 0 && maxOverdue !== Infinity) {
-    for (const item of overdue.ranked) {
-      if (item.drawsSinceLastSeen !== Infinity) {
-        scores[item.number] += (item.drawsSinceLastSeen / maxOverdue) * w.overdue;
-      }
-    }
-  }
-
-  // Hot Pairs boost
-  // Count how many times each number appears in the top 20 pairs
-  const pairBoost = new Array(TOTAL_NUMBERS + 1).fill(0);
-  for (const p of hotPairs) {
-    const [a, b] = p.pair.split('-').map(Number);
-    pairBoost[a] += p.count;
-    pairBoost[b] += p.count;
-  }
-  const maxPairBoost = Math.max(...pairBoost.filter(v => v > 0), 1);
-  for (let i = 1; i <= TOTAL_NUMBERS; i++) {
-    scores[i] += (pairBoost[i] / maxPairBoost) * w.pairs;
-  }
-
-  // Strong number scores (pairs don't apply to strong numbers)
-  const maxStrongFreq = freq.strongRanked[0].count;
-  for (const item of freq.strongRanked) {
-    strongScores[item.number] += (item.count / maxStrongFreq) * sw.frequency;
-  }
-  const maxStrongTrend = trend.strongRanked[0].score;
-  for (const item of trend.strongRanked) {
-    strongScores[item.number] += (item.score / maxStrongTrend) * sw.trend;
-  }
-  const maxStrongOverdue = overdue.strongRanked[0].drawsSinceLastSeen;
-  if (maxStrongOverdue > 0 && maxStrongOverdue !== Infinity) {
-    for (const item of overdue.strongRanked) {
-      if (item.drawsSinceLastSeen !== Infinity) {
-        strongScores[item.number] += (item.drawsSinceLastSeen / maxStrongOverdue) * sw.overdue;
-      }
-    }
-  }
-
-  // Rank all numbers by combined score
-  const allRanked = [];
-  for (let i = 1; i <= TOTAL_NUMBERS; i++) {
-    allRanked.push({ number: i, score: parseFloat(scores[i].toFixed(2)) });
-  }
-  allRanked.sort((a, b) => b.score - a.score);
-
-  const allStrongRanked = [];
-  for (let i = 1; i <= STRONG_MAX; i++) {
-    allStrongRanked.push({ number: i, score: parseFloat(strongScores[i].toFixed(2)) });
-  }
-  allStrongRanked.sort((a, b) => b.score - a.score);
-
-  // Line 1: Top 6 by combined score (deterministic — your "best guess" line)
-  const line1 = allRanked.slice(0, PICK_COUNT)
-    .map(x => x.number)
-    .sort((a, b) => a - b);
-  const strong1 = allStrongRanked[0].number;
-
-  // ---- Line 2: weighted random sample from the top half by score, with
-  // structural-balance validation. Produces variation week-to-week while
-  // still leaning on the algorithm's high-scoring numbers. ----
-  //
-  // Strategy:
-  //   - Candidate pool: top 20 numbers by combined score (covers ~half the
-  //     range, so there's room to vary).
-  //   - Each candidate's weight = its score^1.5 (slight power boost so top
-  //     numbers are favored, but not overwhelmingly).
-  //   - Sample 6 without replacement.
-  //   - Reject and retry if the combo fails structural balance (sum, parity,
-  //     range spread, no 4-in-a-row). Give up after MAX_ATTEMPTS and accept
-  //     whatever was sampled — never block.
-  const TOP_POOL_SIZE = 20;
-  const MAX_ATTEMPTS = 200;
-  const POWER_BOOST = 1.5;
-  const candidates = allRanked.slice(0, TOP_POOL_SIZE);
-
-  let line2 = null;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const picked = weightedSampleWithoutReplacement(
-      candidates,
-      PICK_COUNT,
-      (x) => Math.pow(Math.max(0.01, x.score), POWER_BOOST)
-    ).map((x) => x.number);
-
-    if (isStructurallyBalanced(picked)) {
-      line2 = picked.sort((a, b) => a - b);
-      break;
-    }
-  }
-
-  // Fallback: if no balanced combo was found, take whatever the last sample was
-  if (!line2) {
-    line2 = weightedSampleWithoutReplacement(
-      candidates,
-      PICK_COUNT,
-      (x) => Math.pow(Math.max(0.01, x.score), POWER_BOOST)
-    )
-      .map((x) => x.number)
-      .sort((a, b) => a - b);
-  }
-
-  // Strong number for line 2: weighted random among top 3 strong numbers
-  const strongTop3 = allStrongRanked.slice(0, 3);
-  const strong2Pick = weightedSampleWithoutReplacement(
-    strongTop3,
-    1,
-    (x) => Math.max(0.01, x.score)
-  )[0];
-  const strong2 = strong2Pick ? strong2Pick.number : allStrongRanked[0].number;
+  // ---- Line 2 (RANDOM): a fair uniform quick-pick. No analysis applied. ----
+  const randomLine = buildRandomLine();
+  const line2 = randomLine.numbers;
+  const strong2 = randomLine.strong;
 
   return {
-    line1: { numbers: line1, strong: strong1 },
-    line2: { numbers: line2, strong: strong2 },
+    line1: { numbers: line1, strong: strong1, type: 'smart', label: 'חיזוי חכם' },
+    line2: { numbers: line2, strong: strong2, type: 'random', label: 'אקראי לחלוטין' },
     weightsUsed: { ...w },
     analysis: {
       totalDrawsAnalyzed: draws.length,
@@ -739,10 +752,10 @@ function formatWhatsAppMessage(rec) {
     ``,
     `📊 ניתוח ${rec.analysis.totalDrawsAnalyzed} הגרלות`,
     ``,
-    `*שורה 1:*`,
+    `*שורה 1 — 🧠 חיזוי חכם:*`,
     `🔢 ${line1Str}  |  💪 חזק: ${rec.line1.strong}`,
     ``,
-    `*שורה 2:*`,
+    `*שורה 2 — 🎲 אקראי לחלוטין:*`,
     `🔢 ${line2Str}  |  💪 חזק: ${rec.line2.strong}`,
     ``,
     `🔥 *חמים:* ${rec.analysis.topFrequent.slice(0, 5).map(x => x.number).join(', ')}`,
@@ -760,6 +773,9 @@ module.exports = {
   recentTrendAnalysis,
   overdueAnalysis,
   hotPairsAnalysis,
+  signalAnalysis,
+  buildSmartLine,
+  buildRandomLine,
   generateRecommendations,
   evaluateLatestDraw,
   generateAlgorithmInsights,

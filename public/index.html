@@ -86,6 +86,13 @@
       color: #ffd700;
     }
 
+    .rec-sub {
+      margin-top: 12px;
+      font-size: 0.8em;
+      color: #9aa0b0;
+      opacity: 0.85;
+    }
+
     .numbers-row {
       display: flex;
       justify-content: center;
@@ -664,7 +671,7 @@
       html.push(`
         <div class="rec-section">
           <div class="rec-card">
-            <h2>🎯 שורה 1</h2>
+            <h2>🧠 שורה 1 — חיזוי חכם</h2>
             <div class="numbers-row">
               ${line1.numbers.map(n => `<div class="ball">${n}</div>`).join('')}
             </div>
@@ -672,9 +679,10 @@
             <div class="numbers-row">
               <div class="ball strong">${line1.strong}</div>
             </div>
+            <div class="rec-sub">מבוסס מובהקות סטטיסטית + איזון מבני</div>
           </div>
           <div class="rec-card">
-            <h2>🎯 שורה 2</h2>
+            <h2>🎲 שורה 2 — אקראי לחלוטין</h2>
             <div class="numbers-row">
               ${line2.numbers.map(n => `<div class="ball">${n}</div>`).join('')}
             </div>
@@ -682,6 +690,7 @@
             <div class="numbers-row">
               <div class="ball strong">${line2.strong}</div>
             </div>
+            <div class="rec-sub">בחירה אחידה הוגנת — ללא ניתוח</div>
           </div>
         </div>
       `);
@@ -726,7 +735,7 @@
 
         // Line 1
         html.push(`<div class="eval-line-card">`);
-        html.push(`<h4>שורה 1 — חיזוי</h4>`);
+        html.push(`<h4>שורה 1 — 🧠 חיזוי חכם</h4>`);
         html.push(`<div class="eval-balls">`);
         for (const d of ev.line1.detail) {
           html.push(`<div class="eval-ball ${d.hit ? 'hit' : 'miss'}">${d.number}</div>`);
@@ -742,7 +751,7 @@
 
         // Line 2
         html.push(`<div class="eval-line-card">`);
-        html.push(`<h4>שורה 2 — חיזוי</h4>`);
+        html.push(`<h4>שורה 2 — 🎲 אקראי</h4>`);
         html.push(`<div class="eval-balls">`);
         for (const d of ev.line2.detail) {
           html.push(`<div class="eval-ball ${d.hit ? 'hit' : 'miss'}">${d.number}</div>`);
@@ -803,7 +812,7 @@
       }
 
       // Heatmap
-      html.push(`<h3 class="section-title">🗺️ מפת חום - ציון משולב לכל מספר</h3>`);
+      html.push(`<h3 class="section-title">🗺️ מפת חום - ציון מובהקות (50 = בדיוק כמו מקרי, מעל = מעל הצפוי)</h3>`);
       const maxScore = analysis.allScores[0].score;
       html.push(`<div class="heatmap">`);
       for (let i = 1; i <= 37; i++) {
