@@ -1,21 +1,21 @@
 {
   "weights": {
-    "frequency": 25.8,
-    "trend": 35.2,
-    "overdue": 14,
-    "pairs": 25
+    "frequency": 26.2,
+    "trend": 35,
+    "overdue": 14.3,
+    "pairs": 24.5
   },
   "strongWeights": {
     "frequency": 35,
     "trend": 40,
     "overdue": 25
   },
-  "updatedAt": "2026-08-23T07:00:12.941Z",
+  "updatedAt": "2026-08-26T07:00:13.005Z",
   "methodContrib": {
-    "frequency": 61,
+    "frequency": 62,
     "trend": 83,
-    "overdue": 33,
-    "pairs": 59
+    "overdue": 34,
+    "pairs": 58
   },
   "lastBacktestDraws": 30
 }
