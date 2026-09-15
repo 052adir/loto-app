@@ -1,123 +1,52 @@
-/**
- * Lotto Israel - Web Server (zero dependencies)
- * Uses only Node.js built-in modules
- */
-
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const {
-  fetchAllDraws,
-  generateRecommendations,
-  evaluateLatestDraw,
-  generateAlgorithmInsights,
-  formatWhatsAppMessage,
-} = require('./analyze');
-
-const PORT = process.env.PORT || 3000;
-
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'application/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.ico': 'image/x-icon',
-  '.svg': 'image/svg+xml',
-  '.webmanifest': 'application/manifest+json',
-};
-
-const API_HEADERS = {
-  'Content-Type': 'application/json',
-  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-  'Pragma': 'no-cache',
-  'Expires': '0',
-};
-
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-
-  // API routes — always return fresh data, never cached
-  if (url.pathname === '/api/analyze' && req.method === 'GET') {
-    try {
-      const draws = await fetchAllDraws();
-      const rec = generateRecommendations(draws);
-      const lastDrawEval = evaluateLatestDraw(draws);
-      let algorithmInsights = null;
+'use strict';
+const http=require('node:http');
+const fs=require('node:fs');
+const path=require('node:path');
+const {currentDataset,loadDataset}=require('./official-data');
+const {getRecommendation,performanceReport}=require('./tracking');
+const {loadPublished,publishedRecommendation}=require('./published-state');
+const {generateRecommendations,formatWhatsAppMessage}=require('./analyze');
+const VERSION=require('./package.json').version;
+const API_HEADERS={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'};
+const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript','.json':'application/json','.svg':'image/svg+xml'};
+function createServer({
+  snapshotMode=(process.env.RENDER==='true'||process.env.LOTTO_READONLY_SNAPSHOT==='1')&&!process.env.LOTTO_STATE_DIR,
+  dataset=snapshotMode?loadDataset:currentDataset,
+  recommend=snapshotMode?publishedRecommendation:getRecommendation,
+  report=snapshotMode?(data=>loadPublished(data).performance):performanceReport
+}={}) {
+  return http.createServer(async(req,res)=>{
+    const url=new URL(req.url,'http://localhost');
+    if(url.pathname==='/api/version' && req.method==='GET') {res.writeHead(200,API_HEADERS);res.end(JSON.stringify({version:VERSION}));return;}
+    if(url.pathname.startsWith('/api/')) {
+      if(req.method!=='GET'){res.writeHead(405,API_HEADERS);res.end(JSON.stringify({error:'Method not allowed'}));return;}
       try {
-        algorithmInsights = generateAlgorithmInsights(draws);
-      } catch (e) {
-        console.error('⚠️  algorithmInsights error:', e.message);
-      }
-      res.writeHead(200, API_HEADERS);
-      res.end(JSON.stringify({ ...rec, lastDrawEval, algorithmInsights }));
-    } catch (err) {
-      res.writeHead(500, API_HEADERS);
-      res.end(JSON.stringify({ error: err.message }));
+        const data=await dataset();
+        let result;
+        if(url.pathname==='/api/analyze') {
+          const rec=recommend(data);
+          result={version:VERSION,...(rec||{}),analysis:rec?.analysis||generateRecommendations(structuredClone(data.draws)).analysis,performance:await report(data),dataUpdatedAt:data.fetchedAt,source:data.source,available:!!rec,storageMode:snapshotMode?'published-snapshot':'persistent-local',notice:rec?'ההמלצה נשמרה לבדיקה על הנייר. רענון אינו משנה את הטורים.':'אין כרגע המלצה שמורה להגרלה פתוחה. ממתינים לעדכון הבא.'};
+        } else if(url.pathname==='/api/recommend') {
+          const rec=recommend(data);
+          if(!rec){res.writeHead(409,API_HEADERS);res.end(JSON.stringify({error:'אין כרגע הגרלה פתוחה ומאומתת'}));return;}
+          result={...rec,message:formatWhatsAppMessage(rec)};
+        } else if(url.pathname==='/api/performance') result=await report(data);
+        else if(url.pathname==='/api/draws') result=data.draws.slice(0,Math.max(1,Math.min(200,parseInt(url.searchParams.get('limit'),10)||20)));
+        else {res.writeHead(404,API_HEADERS);res.end(JSON.stringify({error:'Not found'}));return;}
+        res.writeHead(200,API_HEADERS);res.end(JSON.stringify(result));
+      } catch(e){res.writeHead(503,API_HEADERS);res.end(JSON.stringify({error:e.message}));}
+      return;
     }
-    return;
-  }
-
-  if (url.pathname === '/api/recommend' && req.method === 'GET') {
+    const name=url.pathname==='/'?'index.html':url.pathname.slice(1);
+    if(!['index.html','sw.js','manifest.json','icons/icon-192.svg','icons/icon-512.svg'].includes(name)){res.writeHead(404);res.end('Not found');return;}
     try {
-      const draws = await fetchAllDraws();
-      const rec = generateRecommendations(draws);
-      res.writeHead(200, API_HEADERS);
-      res.end(JSON.stringify({
-        line1: rec.line1,
-        line2: rec.line2,
-        totalDraws: rec.analysis.totalDrawsAnalyzed,
-        message: formatWhatsAppMessage(rec),
-      }));
-    } catch (err) {
-      res.writeHead(500, API_HEADERS);
-      res.end(JSON.stringify({ error: err.message }));
-    }
-    return;
-  }
-
-  if (url.pathname === '/api/draws' && req.method === 'GET') {
-    try {
-      const draws = await fetchAllDraws();
-      const limit = parseInt(url.searchParams.get('limit')) || 20;
-      res.writeHead(200, API_HEADERS);
-      res.end(JSON.stringify(draws.slice(0, limit)));
-    } catch (err) {
-      res.writeHead(500, API_HEADERS);
-      res.end(JSON.stringify({ error: err.message }));
-    }
-    return;
-  }
-
-  // Static files
-  let filePath = url.pathname === '/' ? '/index.html' : url.pathname;
-  filePath = path.join(__dirname, 'public', filePath);
-
-  const ext = path.extname(filePath);
-  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-
-  try {
-    const data = fs.readFileSync(filePath);
-    const headers = { 'Content-Type': contentType };
-    // Service worker and HTML must never be cached — ensures SW updates propagate
-    if (url.pathname === '/sw.js' || ext === '.html') {
-      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-    }
-    res.writeHead(200, headers);
-    res.end(data);
-  } catch {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
-  }
-});
-
-// Start the server — data loads synchronously from draws.json (no network)
-server.listen(PORT, () => {
-  console.log(`Lotto Israel running at http://localhost:${PORT}`);
-  try {
-    const draws = fetchAllDraws();
-    console.log(`✅ Data ready: ${draws.length} draws loaded from draws.json`);
-  } catch (err) {
-    console.error('⚠️  Data load failed:', err.message);
-  }
-});
+      const body=fs.readFileSync(path.join(__dirname,'public',name));
+      res.writeHead(200,{'Content-Type':MIME[path.extname(name)]||'application/octet-stream','Cache-Control':'no-cache'});res.end(body);
+    } catch{res.writeHead(404);res.end('Not found');}
+  });
+}
+if(require.main===module) {
+  const port=Number(process.env.PORT)||3000;
+  createServer().listen(port,()=>console.log(`Lotto paper tracking: http://localhost:${port}`));
+}
+module.exports={createServer};

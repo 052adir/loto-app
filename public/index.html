@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/icon-192.svg">
-  <title>לוטו ישראל - מנתח חכם</title>
+  <title>לוטו ישראל — בדיקה על הנייר</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -592,12 +592,15 @@
       color: #ccccff;
       margin-top: 2px;
     }
+    .history-table { border-collapse:collapse; width:100%; font-size:0.88em; }
+    .history-table th, .history-table td { padding:12px; border-bottom:1px solid #555577; text-align:right; line-height:1.8; }
+    .eval-section p { line-height:1.8; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🎰 לוטו ישראל - מנתח חכם</h1>
-    <p class="subtitle">ניתוח סטטיסטי של כל ההגרלות ההיסטוריות</p>
+    <h1>🎰 לוטו ישראל — בדיקה על הנייר</h1>
+    <p class="subtitle">המלצות שמורות והשוואה לבחירה אקראית, ללא רכישת טפסים</p>
 
     <div id="content">
       <div class="loading">
@@ -607,6 +610,7 @@
     </div>
 
     <footer>
+      <div id="app-version">גרסה 1.1.0</div>
       ⚠️ הניתוח מבוסס על סטטיסטיקה בלבד ואינו מבטיח זכייה.
       הלוטו הוא משחק מזל ולכל מספר אותם סיכויים בכל הגרלה.
     </footer>
@@ -617,61 +621,55 @@
       try {
         const res = await fetch('/api/analyze', { cache: 'no-store' });
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "טעינת הנתונים נכשלה");
+        document.getElementById('app-version').textContent = 'גרסה ' + data.version;
+        window.lastReport = data;
         renderAll(data);
       } catch (err) {
         document.getElementById('content').innerHTML =
-          `<div class="loading" style="color:#ff6666;">שגיאה בטעינת נתונים: ${err.message}</div>`;
+          `<div class="loading" style="color:#ff6666;">שגיאה בטעינת נתונים: ${escapeHtml(err.message)}</div>`;
       }
     }
 
-    function getNextDrawDate() {
-      // Israeli Lotto draws: Tuesday (2), Thursday (4), Saturday (6)
-      const drawDays = [2, 4, 6];
-      const now = new Date();
-      // Work in Israel timezone (UTC+3 / UTC+2 depending on DST)
-      const ilOffset = now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
-      const ilNow = new Date(ilOffset);
-
-      for (let d = 0; d <= 7; d++) {
-        const candidate = new Date(ilNow);
-        candidate.setDate(ilNow.getDate() + d);
-        if (drawDays.includes(candidate.getDay())) {
-          // If today is a draw day, only show it if before 22:00 (draw hasn't happened yet)
-          if (d === 0 && ilNow.getHours() >= 22) continue;
-          return candidate;
-        }
-      }
-      return null;
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
-
-    function formatHebrewDay(date) {
-      const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-      return 'יום ' + days[date.getDay()];
+    const money = value => value === null ? 'ממתין לסכומי פרסים' : value.toLocaleString('he-IL') + ' ₪';
+    function renderPerformance(performance) {
+      const p = performance.summary;
+      const rows = performance.results.slice().reverse().map(r => {
+        if (!r.strategy) return '<tr><td>' + r.drawId + '</td><td colspan="4">' + escapeHtml(r.reason) + '</td></tr>';
+        const describe = lines => lines.map(l => l.numbers.join(', ') + ' | חזק ' + l.strong + ' ← ' + l.hits.length + '/6' + (l.strongHit ? ' + חזק' : '')).join('<br>');
+        const total = lines => lines.some(l => l.prize === null) ? null : lines.reduce((s,l) => s + l.prize, 0);
+        return '<tr><td>' + r.drawId + '<br>' + r.date + '</td><td dir="ltr">' + describe(r.strategy) + '</td><td>' + money(total(r.strategy)) + '</td><td dir="ltr">' + describe(r.baseline) + '</td><td>' + money(total(r.baseline)) + '</td></tr>';
+      });
+      return '<section class="eval-section"><h3>תוצאות של המלצות שנשמרו מראש</h3>' +
+        '<p>' + p.evaluatedDraws + ' הגרלות נבדקו · ' + p.pendingDraws + ' ממתינות לתוצאה · ' + p.excludedDraws + ' דורשות בדיקת תאריך</p>' +
+        (p.evaluatedDraws === 0 ? '<p>המעקב מתחיל עכשיו. תוצאות יוצגו רק לאחר הגרלה שעבורה נשמרו טורים מראש.</p>' : '') +
+        '<div class="eval-lines">' + ['strategy','baseline'].map((key,i) => '<div class="eval-line-card"><h4>' + (i ? 'השוואה: שני טורים אקראיים' : 'המערכת: טור סטטיסטי וטור אקראי') + '</h4><p>עלות מדומה: ' + money(p[key].cost) + '</p><p>זכיות לפי הפרס שפורסם: ' + money(p[key].payout) + '</p><p>יתרה לפני מס: ' + money(p[key].netBeforeTax) + '</p><p>ירידה מרבית מהשיא: ' + money(p[key].maxDrawdown) + '</p></div>').join('') + '</div>' +
+        '<p>שתי החלופות נבדקות באותו תקציב: 2 טורים × 3 ₪ להגרלה, ללא אקסטרה. חלופת ההשוואה מיועדת לבדיקה בלבד ואינה מוסיפה טורים לשליחה.</p>' +
+        '<p>' + escapeHtml(performance.notice) + '</p>' +
+        (rows.length ? '<div style="overflow-x:auto"><table class="history-table"><thead><tr><th>הגרלה</th><th>טורי המערכת ופגיעות</th><th>זכיות המערכת</th><th>טורים אקראיים ופגיעות</th><th>זכיות אקראי</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' : '') + '</section>';
     }
 
     function renderAll(data) {
-      const { line1, line2, analysis, lastDrawEval, algorithmInsights } = data;
+      const { line1, line2, analysis } = data;
       const html = [];
 
-      // Next Draw Date Banner
-      const nextDraw = getNextDrawDate();
-      if (nextDraw) {
-        const dateStr = nextDraw.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
-        const dayName = formatHebrewDay(nextDraw);
-        html.push(`
-          <div class="next-draw-banner">
-            <div class="ndb-label">🎯 מיועד להגרלה שתערך ב-</div>
-            <div class="ndb-date">${dateStr}</div>
-            <div class="ndb-day">${dayName}</div>
-          </div>
-        `);
+      html.push('<div class="next-draw-banner"><div class="ndb-label">' + escapeHtml(data.notice) + '</div>');
+      if (data.available) {
+        html.push('<div class="ndb-date">הגרלה ' + data.target.id + '</div><p>סגירת מכירה לפי מפעל הפיס: ' + new Date(data.target.cutoffAt).toLocaleString('he-IL', {timeZone:'Asia/Jerusalem'}) + '</p><p>הטורים נשמרו ב־' + new Date(data.createdAt).toLocaleString('he-IL', {timeZone:'Asia/Jerusalem'}) + '</p>');
       }
-
+      html.push('</div>');
+      if (data.storageMode === 'published-snapshot') {
+        html.push('<p class="info-bar">עודכן מהמחשב ב־' + new Date(data.dataUpdatedAt).toLocaleString('he-IL', {timeZone:'Asia/Jerusalem'}) + '. העדכונים מתפרסמים באמצעות המחשב כשהוא פועל ומחובר לרשת.</p>');
+      }
+      if (data.available) {
       // Recommendations
       html.push(`
         <div class="rec-section">
           <div class="rec-card">
-            <h2>🧠 שורה 1 — חיזוי חכם</h2>
+            <h2>🧠 שורה 1 — בחירה סטטיסטית</h2>
             <div class="numbers-row">
               ${line1.numbers.map(n => `<div class="ball">${n}</div>`).join('')}
             </div>
@@ -679,7 +677,7 @@
             <div class="numbers-row">
               <div class="ball strong">${line1.strong}</div>
             </div>
-            <div class="rec-sub">מבוסס מובהקות סטטיסטית + איזון מבני</div>
+            <div class="rec-sub">דירוג נתוני עבר — ללא יתרון חיזוי מוכח</div>
           </div>
           <div class="rec-card">
             <h2>🎲 שורה 2 — אקראי לחלוטין</h2>
@@ -690,10 +688,12 @@
             <div class="numbers-row">
               <div class="ball strong">${line2.strong}</div>
             </div>
-            <div class="rec-sub">בחירה אחידה הוגנת — ללא ניתוח</div>
+            <div class="rec-sub">נבחר פעם אחת ונשמר להגרלה זו</div>
           </div>
         </div>
       `);
+
+      }
 
       // Info bar
       html.push(`
@@ -706,113 +706,15 @@
       // Actions
       html.push(`
         <div class="actions">
-          <button class="btn" onclick="loadData()">🔄 ניתוח מחדש</button>
-          <button class="btn btn-gold" onclick="sendNotification()">📱 שלח WhatsApp עכשיו</button>
+          <button class="btn" onclick="loadData()">🔄 רענון תוצאות</button>
+          <button class="btn btn-gold" onclick="downloadReport()">הורדת יומן הבדיקה</button>
         </div>
       `);
 
-      // Last Draw Evaluation Section
-      if (lastDrawEval) {
-        const ev = lastDrawEval;
-        const drawDate = ev.date ? new Date(ev.date).toLocaleDateString('he-IL') : `#${ev.drawId}`;
-
-        html.push(`<div class="eval-section">`);
-        html.push(`<h3>📋 ניתוח הגרלה אחרונה</h3>`);
-        html.push(`<div class="eval-draw-info">הגרלה #${ev.drawId} — ${drawDate}</div>`);
-
-        // Actual winning numbers
-        html.push(`<div class="eval-actual-row">`);
-        html.push(`<div class="label">מספרים שעלו בהגרלה</div>`);
-        html.push(`<div class="eval-balls">`);
-        for (const n of ev.actual.numbers) {
-          html.push(`<div class="eval-ball hit">${n}</div>`);
-        }
-        html.push(`<div class="eval-ball strong-hit">${ev.actual.strong}</div>`);
-        html.push(`</div></div>`);
-
-        // Line 1 and Line 2 evaluation
-        html.push(`<div class="eval-lines">`);
-
-        // Line 1
-        html.push(`<div class="eval-line-card">`);
-        html.push(`<h4>שורה 1 — 🧠 חיזוי חכם</h4>`);
-        html.push(`<div class="eval-balls">`);
-        for (const d of ev.line1.detail) {
-          html.push(`<div class="eval-ball ${d.hit ? 'hit' : 'miss'}">${d.number}</div>`);
-        }
-        const s1cls = ev.line1.strong.hit ? 'strong-hit' : 'strong-miss';
-        html.push(`<div class="eval-ball ${s1cls}">${ev.line1.strong.predicted}</div>`);
-        html.push(`</div>`);
-        html.push(`<div class="eval-hit-count"><span class="${ev.line1.hitsCount > 0 ? 'hit-num' : 'miss-num'}">${ev.line1.hitsCount}/6</span> מספרים זוהו`);
-        if (ev.line1.strong.hit) html.push(` + חזק!`);
-        html.push(`</div>`);
-        html.push(`<div class="eval-bar-container"><div class="eval-bar"><div class="eval-bar-fill" style="width:${(ev.line1.hitsCount / 6 * 100)}%"></div></div><span class="eval-bar-label">${Math.round(ev.line1.hitsCount / 6 * 100)}%</span></div>`);
-        html.push(`</div>`);
-
-        // Line 2
-        html.push(`<div class="eval-line-card">`);
-        html.push(`<h4>שורה 2 — 🎲 אקראי</h4>`);
-        html.push(`<div class="eval-balls">`);
-        for (const d of ev.line2.detail) {
-          html.push(`<div class="eval-ball ${d.hit ? 'hit' : 'miss'}">${d.number}</div>`);
-        }
-        const s2cls = ev.line2.strong.hit ? 'strong-hit' : 'strong-miss';
-        html.push(`<div class="eval-ball ${s2cls}">${ev.line2.strong.predicted}</div>`);
-        html.push(`</div>`);
-        html.push(`<div class="eval-hit-count"><span class="${ev.line2.hitsCount > 0 ? 'hit-num' : 'miss-num'}">${ev.line2.hitsCount}/6</span> מספרים זוהו`);
-        if (ev.line2.strong.hit) html.push(` + חזק!`);
-        html.push(`</div>`);
-        html.push(`<div class="eval-bar-container"><div class="eval-bar"><div class="eval-bar-fill" style="width:${(ev.line2.hitsCount / 6 * 100)}%"></div></div><span class="eval-bar-label">${Math.round(ev.line2.hitsCount / 6 * 100)}%</span></div>`);
-        html.push(`</div>`);
-
-        html.push(`</div>`); // .eval-lines
-
-        // Combined summary
-        html.push(`<div class="eval-summary">`);
-        html.push(`<div class="big-stat">${ev.totalUniqueHits}/${ev.totalUniquePredicted}</div>`);
-        html.push(`<div class="big-label">סה"כ מספרים ייחודיים שנחזו נכון</div>`);
-        html.push(`</div>`);
-
-        // Algorithm Insights — always render the box, fill from data or show fallback
-        html.push(`<div class="algo-insights-box">`);
-        html.push(`<h4>🧠 מסקנות האלגוריתם:</h4>`);
-
-        if (algorithmInsights && algorithmInsights.insights && algorithmInsights.insights.length > 0) {
-          const ai = algorithmInsights;
-          for (const insight of ai.insights) {
-            html.push(`<p class="insight-line">${insight}</p>`);
-          }
-
-          // Weight bars visualization
-          if (ai.deltas && ai.deltas.length > 0) {
-            const colors = { frequency: '#4488ff', trend: '#44dd66', overdue: '#ffaa00', pairs: '#dd44aa' };
-            html.push(`<div class="weight-bars">`);
-            for (const d of ai.deltas) {
-              const color = colors[d.method] || '#8888cc';
-              const pct = Math.min(d.weight, 50);
-              const sign = d.delta > 0 ? '+' : d.delta === 0 ? '' : '';
-              const deltaStr = d.delta === 0 ? '=' : sign + d.delta;
-              html.push(`
-                <div class="wb-item">
-                  <div class="wb-label">${d.name}</div>
-                  <div class="wb-track"><div class="wb-fill" style="width:${pct * 2}%; background:${color};"></div></div>
-                  <div class="wb-val">${Number(d.weight).toFixed(1)}% (${deltaStr})</div>
-                </div>
-              `);
-            }
-            html.push(`</div>`);
-          }
-        } else {
-          html.push(`<p class="insight-line">המערכת מנתחת את הביצועים ומעדכנת את המשקלות באופן אוטומטי בכל עדכון נתונים.</p>`);
-        }
-
-        html.push(`</div>`); // .algo-insights-box
-
-        html.push(`</div>`); // .eval-section
-      }
+      html.push(renderPerformance(data.performance));
 
       // Heatmap
-      html.push(`<h3 class="section-title">🗺️ מפת חום - ציון מובהקות (50 = בדיוק כמו מקרי, מעל = מעל הצפוי)</h3>`);
+      html.push(`<h3 class="section-title">🗺️ מפת תדירות היסטורית — אינה מנבאת את ההגרלה הבאה</h3>`);
       const maxScore = analysis.allScores[0].score;
       html.push(`<div class="heatmap">`);
       for (let i = 1; i <= 37; i++) {
@@ -876,25 +778,11 @@
       document.getElementById('content').innerHTML = html.join('');
     }
 
-    async function sendNotification() {
-      const btn = event.target;
-      btn.disabled = true;
-      btn.textContent = '📤 שולח...';
-      try {
-        const res = await fetch('/api/notify', { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          btn.textContent = '✅ נשלח!';
-        } else {
-          btn.textContent = '❌ ' + (data.error || 'שגיאה');
-        }
-      } catch (err) {
-        btn.textContent = '❌ שגיאה';
-      }
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.textContent = '📱 שלח WhatsApp עכשיו';
-      }, 3000);
+    function downloadReport() {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(window.lastReport,null,2)], {type:'application/json'}));
+      const link = document.createElement('a');
+      link.href = url; link.download = 'lotto-paper-report.json'; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
     loadData();

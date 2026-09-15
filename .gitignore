@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+.lotto-data/
+node_modules/
+*.tmp

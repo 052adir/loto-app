@@ -22,25 +22,7 @@ let _drawsCache = null;
  * No network requests — data is updated offline via update_data.js.
  */
 function fetchAllDraws() {
-  if (_drawsCache) return _drawsCache;
-
-  if (!fs.existsSync(DRAWS_PATH)) {
-    throw new Error(`draws.json not found at ${DRAWS_PATH}. Run "npm run update" locally first.`);
-  }
-
-  const raw = fs.readFileSync(DRAWS_PATH, 'utf-8');
-  const draws = JSON.parse(raw);
-
-  if (!Array.isArray(draws) || draws.length === 0) {
-    throw new Error('draws.json is empty or invalid. Run "npm run update" to regenerate it.');
-  }
-
-  // Ensure sorted newest-first
-  draws.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-  _drawsCache = draws;
-  console.log(`📊 Loaded ${draws.length} draws from draws.json`);
-  return _drawsCache;
+  return require('./official-data').loadDataset().draws;
 }
 
 function fetchRecentDraws(count = 200) {
@@ -248,24 +230,9 @@ function hotPairsAnalysis(draws) {
 }
 
 /**
- * Method 5: Statistical Significance (z-score) Analysis  — the "brain" of line 1.
- *
- * In a FAIR lotto draw every number is equally likely, so "most frequent" or
- * "overdue" carry no predictive power (the ball has no memory — leaning on
- * overdue numbers is the gambler's fallacy). The ONLY thing that could give a
- * real edge is a physical bias: a number that appears MORE often than pure
- * chance can explain, across the whole history.
- *
- * For each number we model its appearances as Binomial(N, p):
- *   - main numbers: p = PICK_COUNT / TOTAL_NUMBERS  (6/37)
- *   - strong number: p = 1 / STRONG_MAX             (1/7)
- * The z-score = (observed - expected) / standardDeviation tells us how many
- * standard deviations a number sits above (or below) chance. |z| > ~2 means
- * the deviation is unlikely to be random noise (~95% confidence).
- *
- * We expose a positive 0-100 "smartScore" (= 50 + 10*z, clamped) so the UI
- * heatmap and selection logic can rank numbers: 50 ≈ exactly as chance predicts,
- * >50 = over-represented (mild real-bias signal), <50 = under-represented.
+ * Descriptive frequency z-scores, not a demonstrated predictive signal.
+ * Ranking many numbers and selecting on the same history does not establish
+ * significance or physical bias. Live results are measured in tracking.js.
  */
 function signalAnalysis(draws) {
   const N = draws.length;
@@ -302,17 +269,8 @@ function signalAnalysis(draws) {
   return { ranked, strongRanked };
 }
 
-/**
- * Build the SMART line (line 1): a deterministic, fully-reasoned decision.
- *
- * Instead of randomly sampling, we take the top CANDIDATE_POOL numbers by
- * statistical signal and EXHAUSTIVELY search every 6-number subset of them
- * (C(12,6) = 924 combos — trivial) for the one that:
- *   (a) passes structural balance (realistic sum / parity / spread / no long run), AND
- *   (b) maximizes total signal score.
- * This is a genuine upgrade in decision quality: it considers the combo as a
- * whole rather than picking 6 numbers independently, and it never falls back on
- * the gambler's-fallacy "overdue" heuristic.
+/** Select a deterministic balanced line for the existing experimental policy.
+ * Balance does not increase the probability of this combination being drawn.
  */
 function buildSmartLine(signalRanked) {
   const CANDIDATE_POOL = 12;
@@ -363,11 +321,11 @@ function buildRandomLine() {
   for (let i = 1; i <= TOTAL_NUMBERS; i++) pool.push(i);
   // Fisher-Yates partial shuffle for the first PICK_COUNT slots.
   for (let i = 0; i < PICK_COUNT; i++) {
-    const j = i + Math.floor(Math.random() * (pool.length - i));
+    const j = i + require('node:crypto').randomInt(pool.length - i);
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
   const numbers = pool.slice(0, PICK_COUNT).sort((a, b) => a - b);
-  const strong = 1 + Math.floor(Math.random() * STRONG_MAX);
+  const strong = 1 + require('node:crypto').randomInt(STRONG_MAX);
   return { numbers, strong };
 }
 
@@ -403,8 +361,6 @@ function saveAdaptiveWeights(weights, strongWeights, meta = {}) {
  * Accepts optional custom weights for adaptive tuning.
  */
 function generateRecommendations(draws, customWeights, customStrongWeights) {
-  const w = customWeights || loadAdaptiveWeights().weights;
-  const sw = customStrongWeights || loadAdaptiveWeights().strongWeights;
 
   const freq = frequencyAnalysis(draws);
   const trend = recentTrendAnalysis(draws, 100);
@@ -424,14 +380,15 @@ function generateRecommendations(draws, customWeights, customStrongWeights) {
   const strong1 = signal.strongRanked[0].number;
 
   // ---- Line 2 (RANDOM): a fair uniform quick-pick. No analysis applied. ----
-  const randomLine = buildRandomLine();
+  let randomLine;
+  do { randomLine = buildRandomLine(); }
+  while (randomLine.strong === strong1 && randomLine.numbers.join(',') === line1.join(','));
   const line2 = randomLine.numbers;
   const strong2 = randomLine.strong;
 
   return {
-    line1: { numbers: line1, strong: strong1, type: 'smart', label: 'חיזוי חכם' },
+    line1: { numbers: line1, strong: strong1, type: 'smart', label: 'בחירה סטטיסטית' },
     line2: { numbers: line2, strong: strong2, type: 'random', label: 'אקראי לחלוטין' },
-    weightsUsed: { ...w },
     analysis: {
       totalDrawsAnalyzed: draws.length,
       dateRange: {
@@ -611,132 +568,6 @@ function computeAdaptiveWeights(allDraws, backtestWindow = 50) {
  * Uses all draws except the newest to predict, then compares against actual.
  * Returns a structured object ready for JSON serialization.
  */
-function evaluateLatestDraw(allDraws) {
-  if (!allDraws || allDraws.length < 51) return null;
-
-  const latestDraw = allDraws[0];
-  const historicalDraws = allDraws.slice(1);
-
-  const rec = generateRecommendations(historicalDraws);
-
-  const actualSet = new Set(latestDraw.winNumbers);
-  const line1Hits = rec.line1.numbers.filter(n => actualSet.has(n));
-  const line2Hits = rec.line2.numbers.filter(n => actualSet.has(n));
-  const strong1Hit = rec.line1.strong === latestDraw.strongNumber;
-  const strong2Hit = rec.line2.strong === latestDraw.strongNumber;
-
-  const allPredicted = new Set([...rec.line1.numbers, ...rec.line2.numbers]);
-  const totalUniqueHits = [...allPredicted].filter(n => actualSet.has(n));
-
-  // Per-number detail for line1 and line2 (for visual hit/miss display)
-  const line1Detail = rec.line1.numbers.map(n => ({ number: n, hit: actualSet.has(n) }));
-  const line2Detail = rec.line2.numbers.map(n => ({ number: n, hit: actualSet.has(n) }));
-
-  return {
-    drawId: latestDraw._id,
-    date: latestDraw.date,
-    actual: { numbers: latestDraw.winNumbers, strong: latestDraw.strongNumber },
-    line1: {
-      predicted: rec.line1.numbers,
-      detail: line1Detail,
-      hitsCount: line1Hits.length,
-      hits: line1Hits,
-      strong: { predicted: rec.line1.strong, hit: strong1Hit },
-    },
-    line2: {
-      predicted: rec.line2.numbers,
-      detail: line2Detail,
-      hitsCount: line2Hits.length,
-      hits: line2Hits,
-      strong: { predicted: rec.line2.strong, hit: strong2Hit },
-    },
-    totalUniqueHits: totalUniqueHits.length,
-    totalUniquePredicted: allPredicted.size,
-  };
-}
-
-/**
- * Generate human-readable Hebrew insights based on adaptive weight changes.
- * Compares current adaptive weights against defaults, and summarizes
- * which methods the algorithm is leaning into or away from.
- */
-function generateAlgorithmInsights(allDraws) {
-  if (!allDraws || allDraws.length < 100) return null;
-
-  const adaptive = computeAdaptiveWeights(allDraws, 50);
-  const prev = loadAdaptiveWeights();
-  const newW = adaptive.weights;
-  const oldW = prev.weights;
-
-  const METHOD_NAMES = {
-    frequency: 'התדירות',
-    trend: 'המגמה',
-    overdue: 'המספרים המאחרים',
-    pairs: 'הזוגות',
-  };
-
-  const METHOD_DESCRIPTIONS = {
-    frequency: 'מספרים שמופיעים הכי הרבה פעמים בהיסטוריה',
-    trend: 'מספרים שנמצאים במגמת עלייה בהגרלות האחרונות',
-    overdue: 'מספרים שלא הופיעו כבר זמן רב',
-    pairs: 'זוגות מספרים שנוטים להופיע יחד',
-  };
-
-  const insights = [];
-
-  // Find the biggest movers (delta between new and old weights)
-  const deltas = Object.keys(newW).map(key => ({
-    key,
-    delta: newW[key] - oldW[key],
-    newVal: newW[key],
-  }));
-  deltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-
-  // Significant increases
-  const increased = deltas.filter(d => d.delta > 1.5);
-  const decreased = deltas.filter(d => d.delta < -1.5);
-
-  for (const d of increased) {
-    insights.push(
-      `המערכת זיהתה ששיטת ${METHOD_NAMES[d.key]} (${METHOD_DESCRIPTIONS[d.key]}) מדויקת יותר לאחרונה, ולכן משקלה הועלה ל-${d.newVal.toFixed(1)}% לקראת ההגרלה הבאה.`
-    );
-  }
-
-  for (const d of decreased) {
-    insights.push(
-      `שיטת ${METHOD_NAMES[d.key]} הראתה פחות דיוק בהגרלות האחרונות, ולכן משקלה הורד ל-${d.newVal.toFixed(1)}%.`
-    );
-  }
-
-  // If no significant changes, report stability
-  if (insights.length === 0) {
-    insights.push('כל השיטות מציגות ביצועים יציבים — המשקלות נשארו ללא שינוי משמעותי.');
-  }
-
-  // Always add a summary of the dominant method
-  const dominant = deltas.reduce((best, d) => d.newVal > best.newVal ? d : best, deltas[0]);
-  insights.push(
-    `השיטה המשפיעה ביותר כרגע: ${METHOD_NAMES[dominant.key]} (${dominant.newVal.toFixed(1)}%).`
-  );
-
-  // Add backtest hit-rate context if available
-  if (adaptive.backtestStats) {
-    const s = adaptive.backtestStats;
-    const bestLine = s.line1.avgHits >= s.line2.avgHits ? 1 : 2;
-    const bestAvg = Math.max(s.line1.avgHits, s.line2.avgHits);
-    insights.push(
-      `בבדיקה לאחור על ${s.drawsTested} הגרלות אחרונות, שורה ${bestLine} הצליחה בממוצע ${bestAvg} מתוך 6 מספרים.`
-    );
-  }
-
-  return {
-    insights,
-    weights: newW,
-    previousWeights: oldW,
-    deltas: deltas.map(d => ({ method: d.key, name: METHOD_NAMES[d.key], delta: parseFloat(d.delta.toFixed(1)), weight: d.newVal })),
-  };
-}
-
 /**
  * Format recommendations as WhatsApp-friendly message
  */
@@ -748,11 +579,12 @@ function formatWhatsAppMessage(rec) {
   const line2Str = rec.line2.numbers.join(', ');
 
   return [
-    `🎰 *לוטו - המלצות ל-${dateStr}*`,
+    `🎰 *לוטו — בדיקה על הנייר${rec.target ? ' להגרלה ' + rec.target.id : ''}*`,
+    rec.createdAt ? `נשמר ב־${new Date(rec.createdAt).toLocaleString('he-IL', {timeZone:'Asia/Jerusalem'})}` : '',
     ``,
     `📊 ניתוח ${rec.analysis.totalDrawsAnalyzed} הגרלות`,
     ``,
-    `*שורה 1 — 🧠 חיזוי חכם:*`,
+    `*שורה 1 — 🧠 בחירה סטטיסטית:*`,
     `🔢 ${line1Str}  |  💪 חזק: ${rec.line1.strong}`,
     ``,
     `*שורה 2 — 🎲 אקראי לחלוטין:*`,
@@ -777,8 +609,6 @@ module.exports = {
   buildSmartLine,
   buildRandomLine,
   generateRecommendations,
-  evaluateLatestDraw,
-  generateAlgorithmInsights,
   formatWhatsAppMessage,
   backtestSingleDraw,
   backtestOverRange,
@@ -789,37 +619,11 @@ module.exports = {
   DEFAULT_STRONG_WEIGHTS,
 };
 
-// If run directly, show analysis
+// CLI uses the same saved recommendation as the web page and notifier.
 if (require.main === module) {
-  console.log('🔄 Loading draws from draws.json...');
-  const draws = fetchAllDraws();
-  console.log(`✅ Loaded ${draws.length} draws\n`);
-
-  // Run adaptive weight computation
-  console.log('⚙️  Computing adaptive weights from recent backtest...');
-  const adaptive = computeAdaptiveWeights(draws, 50);
-  saveAdaptiveWeights(adaptive.weights, adaptive.strongWeights, {
-    methodContrib: adaptive.methodContrib,
-  });
-  console.log(`   Adaptive weights: freq=${adaptive.weights.frequency}% trend=${adaptive.weights.trend}% overdue=${adaptive.weights.overdue}% pairs=${adaptive.weights.pairs}%`);
-
-  const rec = generateRecommendations(draws);
-  console.log(`\n   Using weights: freq=${rec.weightsUsed.frequency}% trend=${rec.weightsUsed.trend}% overdue=${rec.weightsUsed.overdue}% pairs=${rec.weightsUsed.pairs}%\n`);
-  console.log(formatWhatsAppMessage(rec));
-
-  console.log('\n--- Detailed Scores ---');
-  console.log('Top 15 numbers by combined score:');
-  for (const item of rec.analysis.allScores.slice(0, 15)) {
-    console.log(`  #${item.number.toString().padStart(2)}: ${item.score}`);
-  }
-
-  // Show quick backtest summary
-  if (adaptive.backtestStats) {
-    const s = adaptive.backtestStats;
-    console.log('\n--- Backtest Summary (last 50 draws) ---');
-    console.log(`   Line 1: avg ${s.line1.avgHits}/6 hits per draw | Strong hit rate: ${s.line1.strongHitRate}%`);
-    console.log(`   Line 2: avg ${s.line2.avgHits}/6 hits per draw | Strong hit rate: ${s.line2.strongHitRate}%`);
-    console.log(`   Combined unique: avg ${s.combined.avgUniqueHits} hits per draw`);
-    console.log(`   Method contributions: freq=${adaptive.methodContrib.frequency} trend=${adaptive.methodContrib.trend} overdue=${adaptive.methodContrib.overdue} pairs=${adaptive.methodContrib.pairs}`);
-  }
+  require('./official-data').currentDataset().then(data => {
+    const rec = require('./tracking').getRecommendation(data);
+    if (!rec) throw Error('אין כרגע הגרלה פתוחה ומאומתת');
+    console.log(formatWhatsAppMessage(rec));
+  }).catch(e => { console.error(e.message); process.exitCode = 1; });
 }
