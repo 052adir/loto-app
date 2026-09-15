@@ -56,7 +56,7 @@ function getRecommendation(data,{dir=stateDir(),now=new Date()}={}) {
     validateLines(baseline);
     const source=fs.readFileSync(path.join(__dirname,'analyze.js'),'utf8');
     const algorithmHash=sha(source);
-    const record={schemaVersion:1,mode:'paper',createdAt:now.toISOString(),target,sourceLastDrawId:data.draws[0]._id,inputHash:data.drawsHash,algorithmVersion:'paper-v1',algorithmHash,pricePerLine:3,strategy,baseline,analysis:rec.analysis};
+    const record={schemaVersion:1,mode:'paper',createdAt:now.toISOString(),target,sourceLastDrawId:data.draws[0]._id,inputHash:data.drawsHash,algorithmVersion:'paper-disjoint-v2',algorithmHash,pricePerLine:3,strategy,baseline,analysis:rec.analysis};
     // Preserve the exact inputs used; neither record nor inputs are regenerated on refresh.
     createOnce(path.join(dir,'inputs',`${data.drawsHash}.json`),data);
     createOnce(path.join(dir,'algorithms',`${algorithmHash}.json`),{source});
@@ -79,7 +79,7 @@ function evaluateRecord(record,actual,prizes=null) {
   };
   const strategy=record.strategy.map(score),baseline=record.baseline.map(score);
   const complete=[...strategy,...baseline].every(l=>l.prize!==null);
-  return {drawId:actual._id,date:actual.date,createdAt:record.createdAt,status:complete?'evaluated':'prizes_pending',strategy,baseline,costPerPolicy:record.pricePerLine*2,actual};
+  return {drawId:actual._id,date:actual.date,createdAt:record.createdAt,algorithmVersion:record.algorithmVersion,status:complete?'evaluated':'prizes_pending',strategy,baseline,costPerPolicy:record.pricePerLine*2,actual};
 }
 
 function summarize(results,pendingCount) {

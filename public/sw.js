@@ -1,4 +1,4 @@
-const CACHE_NAME = 'loto-v3-paper';
+const CACHE_NAME = 'loto-v4-disjoint';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 // Install — cache static shell

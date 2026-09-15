@@ -329,6 +329,19 @@ function buildRandomLine() {
   return { numbers, strong };
 }
 
+// Uniform pick among the 31 main numbers and 6 strong numbers unused by line 1.
+// This improves the spread of small wins, not jackpot odds or expected win count.
+function buildDisjointLine(first) {
+  const randomInt=require('node:crypto').randomInt;
+  const pool=Array.from({length:TOTAL_NUMBERS},(_,i)=>i+1).filter(n=>!first.numbers.includes(n));
+  for(let i=0;i<PICK_COUNT;i++) {
+    const j=i+randomInt(pool.length-i);
+    [pool[i],pool[j]]=[pool[j],pool[i]];
+  }
+  const strongPool=Array.from({length:STRONG_MAX},(_,i)=>i+1).filter(n=>n!==first.strong);
+  return {numbers:pool.slice(0,PICK_COUNT).sort((a,b)=>a-b),strong:strongPool[randomInt(strongPool.length)]};
+}
+
 // Default weights for the combined scoring
 const DEFAULT_WEIGHTS = { frequency: 30, trend: 35, overdue: 20, pairs: 15 };
 const DEFAULT_STRONG_WEIGHTS = { frequency: 35, trend: 40, overdue: 25 };
@@ -379,16 +392,14 @@ function generateRecommendations(draws, customWeights, customStrongWeights) {
   const line1 = buildSmartLine(signal.ranked);
   const strong1 = signal.strongRanked[0].number;
 
-  // ---- Line 2 (RANDOM): a fair uniform quick-pick. No analysis applied. ----
-  let randomLine;
-  do { randomLine = buildRandomLine(); }
-  while (randomLine.strong === strong1 && randomLine.numbers.join(',') === line1.join(','));
+  // New records use disjoint main numbers and a different strong number.
+  const randomLine=buildDisjointLine({numbers:line1,strong:strong1});
   const line2 = randomLine.numbers;
   const strong2 = randomLine.strong;
 
   return {
     line1: { numbers: line1, strong: strong1, type: 'smart', label: 'בחירה סטטיסטית' },
-    line2: { numbers: line2, strong: strong2, type: 'random', label: 'אקראי לחלוטין' },
+    line2: { numbers: line2, strong: strong2, type: 'disjoint-random', label: 'אקראי ללא חפיפה' },
     analysis: {
       totalDrawsAnalyzed: draws.length,
       dateRange: {
@@ -587,7 +598,7 @@ function formatWhatsAppMessage(rec) {
     `*שורה 1 — 🧠 בחירה סטטיסטית:*`,
     `🔢 ${line1Str}  |  💪 חזק: ${rec.line1.strong}`,
     ``,
-    `*שורה 2 — 🎲 אקראי לחלוטין:*`,
+    `*שורה 2 — 🎲 ${rec.line2.label || "אקראי"}:*`,
     `🔢 ${line2Str}  |  💪 חזק: ${rec.line2.strong}`,
     ``,
     `🔥 *חמים:* ${rec.analysis.topFrequent.slice(0, 5).map(x => x.number).join(', ')}`,
@@ -608,6 +619,7 @@ module.exports = {
   signalAnalysis,
   buildSmartLine,
   buildRandomLine,
+  buildDisjointLine,
   generateRecommendations,
   formatWhatsAppMessage,
   backtestSingleDraw,

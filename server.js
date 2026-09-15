@@ -7,6 +7,7 @@ const {getRecommendation,performanceReport}=require('./tracking');
 const {loadPublished,publishedRecommendation}=require('./published-state');
 const {generateRecommendations,formatWhatsAppMessage}=require('./analyze');
 const VERSION=require('./package.json').version;
+const {compareRecommendation}=require('./odds');
 const API_HEADERS={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'};
 const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript','.json':'application/json','.svg':'image/svg+xml'};
 function createServer({
@@ -25,7 +26,7 @@ function createServer({
         let result;
         if(url.pathname==='/api/analyze') {
           const rec=recommend(data);
-          result={version:VERSION,...(rec||{}),analysis:rec?.analysis||generateRecommendations(structuredClone(data.draws)).analysis,performance:await report(data),dataUpdatedAt:data.fetchedAt,source:data.source,available:!!rec,storageMode:snapshotMode?'published-snapshot':'persistent-local',notice:rec?'ההמלצה נשמרה לבדיקה על הנייר. רענון אינו משנה את הטורים.':'אין כרגע המלצה שמורה להגרלה פתוחה. ממתינים לעדכון הבא.'};
+          result={version:VERSION,...(rec||{}),odds:compareRecommendation(rec),analysis:rec?.analysis||generateRecommendations(structuredClone(data.draws)).analysis,performance:await report(data),dataUpdatedAt:data.fetchedAt,source:data.source,available:!!rec,storageMode:snapshotMode?'published-snapshot':'persistent-local',notice:rec?'ההמלצה נשמרה לבדיקה על הנייר. רענון אינו משנה את הטורים.':'אין כרגע המלצה שמורה להגרלה פתוחה. ממתינים לעדכון הבא.'};
         } else if(url.pathname==='/api/recommend') {
           const rec=recommend(data);
           if(!rec){res.writeHead(409,API_HEADERS);res.end(JSON.stringify({error:'אין כרגע הגרלה פתוחה ומאומתת'}));return;}

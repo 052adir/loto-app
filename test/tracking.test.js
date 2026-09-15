@@ -124,3 +124,27 @@ test('API returns the saved lines unchanged and keeps private files inaccessible
   assert.equal((await fetch(base+'/.env')).status,404);assert.equal((await fetch(base+'/.lotto-data/recommendations/4001.json')).status,404);
   assert.equal((await fetch(base+'/api/notify',{method:'POST'})).status,405);
 });
+
+test('future policy is disjoint and existing legacy record stays immutable',t=>{
+  const dir=temp(t),data=dataset();const rec=getRecommendation(data,{dir,now:now()});
+  assert.equal(rec.record.algorithmVersion,'paper-disjoint-v2');
+  assert.equal(rec.line1.numbers.filter(n=>rec.line2.numbers.includes(n)).length,0);
+  assert.notEqual(rec.line1.strong,rec.line2.strong);
+  const {checksum,...old}=rec.record;old.algorithmVersion='paper-v1';old.strategy[1]={numbers:[...old.strategy[0].numbers],strong:old.strategy[0].strong%7+1};
+  const legacy={...old,checksum:sha(JSON.stringify(old))};const file=path.join(dir,'recommendations','4001.json');fs.writeFileSync(file,JSON.stringify(legacy));
+  assert.deepEqual(getRecommendation(data,{dir,now:now()}).record,legacy);
+});
+test('disjoint random tickets are valid across all strong numbers',()=>{
+  const {buildDisjointLine}=require('../analyze');
+  for(let strong=1;strong<=7;strong++)for(let i=0;i<40;i++){
+    const first={numbers:[1,2,3,35,36,37],strong},line=buildDisjointLine(first);
+    assert.equal(new Set(line.numbers).size,6);assert.ok(line.numbers.every(n=>n>=1&&n<=37&&!first.numbers.includes(n)));
+    assert.ok(line.strong>=1&&line.strong<=7);assert.notEqual(line.strong,strong);
+  }
+});
+test('exact odds preserve jackpot and match independently enumerated counts',()=>{
+  const {TOTAL,layouts}=require('../odds');assert.equal(TOTAL,16273488);assert.equal(layouts.length,13);
+  assert.deepEqual(layouts[0].favorable,[1356068,280068,100268,16568,2618,386,14,2]);
+  assert.deepEqual(layouts.find(r=>r.overlap===1&&r.sameStrong).favorable,[1338568,277168,100268,16568,2618,386,14,2]);
+  for(const r of layouts){assert.equal(r.favorable[7],2);assert.ok(r.favorable[0]<=layouts[0].favorable[0]);}
+});

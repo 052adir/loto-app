@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "publishedAt": "2026-09-15T11:25:09.399Z",
+  "publishedAt": "2026-09-15T11:53:56.530Z",
   "drawsHash": "93e716f0c364d4c97045168f6202bae33c8401375877eb077eef5bed7d4ce535",
   "records": [
     {
@@ -656,5 +656,5 @@
     "results": [],
     "notice": "בדיקה על הנייר בלבד. הזכיות מחושבות לפי הפרס שפורסם לטור, לפני מס; סכום חסר אינו נחשב לאפס. זו אינה הוכחה ליתרון חיזוי."
   },
-  "checksum": "e7a4cd26670e926ccb5a3e8631b038652a41a62e3171c5d0e82a4a10b3a7b0f4"
+  "checksum": "57df29d24480cfda063e6943e38ca581353ff3d888a069bc2985e31e3fddaff6"
 }

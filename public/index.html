@@ -610,7 +610,7 @@
     </div>
 
     <footer>
-      <div id="app-version">גרסה 1.1.0</div>
+      <div id="app-version">גרסה 1.2.0</div>
       ⚠️ הניתוח מבוסס על סטטיסטיקה בלבד ואינו מבטיח זכייה.
       הלוטו הוא משחק מזל ולכל מספר אותם סיכויים בכל הגרלה.
     </footer>
@@ -635,13 +635,24 @@
       return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
     const money = value => value === null ? 'ממתין לסכומי פרסים' : value.toLocaleString('he-IL') + ' ₪';
+    function renderOdds(odds) {
+      if (!odds) return '';
+      const pct = p => (p * 100).toFixed(6) + '%';
+      const rows = [[0,'פרס כלשהו (3 מספרים ומעלה)'],[2,'4 מספרים ומעלה'],[4,'5 מספרים ומעלה'],[7,'פרס ראשון: 6 וחזק']];
+      return '<section class="eval-section"><h3>פיזור הטורים — השוואת סיכויים מדויקת</h3><p>' +
+        (odds.newPolicyActive ? 'הפיזור החדש פעיל: אין מספרים משותפים בין הטורים והחזקים שונים.' : 'הפיזור החדש יחל בהמלצה הבאה: ללא מספרים משותפים ועם חזקים שונים. המלצה שכבר נשמרה נשארת כפי שהיא.') +
+        '</p><div style="overflow-x:auto"><table class="history-table"><thead><tr><th>לפחות טור אחד זוכה</th><th>הטורים המוצגים</th><th>הפיזור החדש</th></tr></thead><tbody>' +
+        rows.map(([i,label]) => '<tr><td>' + label + '</td><td>' + (odds.current ? pct(odds.current.probabilities[i]) : 'אין המלצה פתוחה') + '</td><td>' + pct(odds.best.probabilities[i]) + '</td></tr>').join('') +
+        '</tbody></table></div><p>הסיכוי לפרס הראשון נשאר 1 ל־8,136,744 לשני טורים שונים. הפיזור משפר מעט את הסיכוי לפרס כלשהו; הוא אינו מגדיל את תוחלת מספר הטורים הזוכים בכל דרגת פרס.</p><p>חישוב לכל ' + odds.totalOutcomes.toLocaleString('he-IL') + ' התוצאות האפשריות בהגרלה הוגנת של 6 מתוך 37 וחזק מתוך 7. שני טורים רגילים, בעלות כוללת של 6 ₪. זהו חישוב הסתברות, ללא חיזוי מנתוני עבר.</p><details><summary>כל 13 אפשרויות החפיפה</summary><div style="overflow-x:auto"><table class="history-table"><thead><tr><th>מספרים משותפים</th><th>חזקים</th><th>פרס כלשהו</th><th>4 ומעלה</th></tr></thead><tbody>' +
+        odds.layouts.map(r => '<tr><td>' + r.overlap + '</td><td>' + (r.sameStrong ? 'זהים' : 'שונים') + '</td><td>' + pct(r.probabilities[0]) + '</td><td>' + pct(r.probabilities[2]) + '</td></tr>').join('') + '</tbody></table></div></details></section>';
+    }
     function renderPerformance(performance) {
       const p = performance.summary;
       const rows = performance.results.slice().reverse().map(r => {
         if (!r.strategy) return '<tr><td>' + r.drawId + '</td><td colspan="4">' + escapeHtml(r.reason) + '</td></tr>';
         const describe = lines => lines.map(l => l.numbers.join(', ') + ' | חזק ' + l.strong + ' ← ' + l.hits.length + '/6' + (l.strongHit ? ' + חזק' : '')).join('<br>');
         const total = lines => lines.some(l => l.prize === null) ? null : lines.reduce((s,l) => s + l.prize, 0);
-        return '<tr><td>' + r.drawId + '<br>' + r.date + '</td><td dir="ltr">' + describe(r.strategy) + '</td><td>' + money(total(r.strategy)) + '</td><td dir="ltr">' + describe(r.baseline) + '</td><td>' + money(total(r.baseline)) + '</td></tr>';
+        return '<tr><td>' + r.drawId + '<br>' + r.date + '<br>' + (r.algorithmVersion === 'paper-disjoint-v2' ? 'פיזור ללא חפיפה' : 'גרסה קודמת') + '</td><td dir="ltr">' + describe(r.strategy) + '</td><td>' + money(total(r.strategy)) + '</td><td dir="ltr">' + describe(r.baseline) + '</td><td>' + money(total(r.baseline)) + '</td></tr>';
       });
       return '<section class="eval-section"><h3>תוצאות של המלצות שנשמרו מראש</h3>' +
         '<p>' + p.evaluatedDraws + ' הגרלות נבדקו · ' + p.pendingDraws + ' ממתינות לתוצאה · ' + p.excludedDraws + ' דורשות בדיקת תאריך</p>' +
@@ -680,7 +691,7 @@
             <div class="rec-sub">דירוג נתוני עבר — ללא יתרון חיזוי מוכח</div>
           </div>
           <div class="rec-card">
-            <h2>🎲 שורה 2 — אקראי לחלוטין</h2>
+            <h2>🎲 שורה 2 — ${escapeHtml(line2.label || "אקראי")}</h2>
             <div class="numbers-row">
               ${line2.numbers.map(n => `<div class="ball">${n}</div>`).join('')}
             </div>
@@ -711,6 +722,7 @@
         </div>
       `);
 
+      html.push(renderOdds(data.odds));
       html.push(renderPerformance(data.performance));
 
       // Heatmap
