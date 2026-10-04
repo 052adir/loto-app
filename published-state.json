@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "publishedAt": "2026-09-30T07:00:04.001Z",
-  "drawsHash": "6c5d258a2fe38a1dad028778ba273d3af947ccbcec004ae50a3dd11a22c79d33",
+  "publishedAt": "2026-10-04T07:00:01.976Z",
+  "drawsHash": "6cfb6a29d04d8e2d427e83414bf7830fd856f2699e77747e792f6f2f46dcf2bb",
   "records": [
     {
       "schemaVersion": 1,
@@ -3032,26 +3032,632 @@
         ]
       },
       "checksum": "bd7ba8c782e12f54195489b9fde38e6f2ab03070f14e8f4c412bda6a28684b61"
+    },
+    {
+      "schemaVersion": 1,
+      "mode": "paper",
+      "createdAt": "2026-10-04T07:00:01.930Z",
+      "target": {
+        "id": 3972,
+        "date": "2026-10-06",
+        "cutoffAt": "2026-10-06T22:45:00+03:00",
+        "source": "https://www.pais.co.il/lotto/"
+      },
+      "sourceLastDrawId": 3971,
+      "inputHash": "6cfb6a29d04d8e2d427e83414bf7830fd856f2699e77747e792f6f2f46dcf2bb",
+      "algorithmVersion": "paper-disjoint-v2",
+      "algorithmHash": "2be1edbe483d1178ef82d7dbf4a3310baea09f62469f29cbed4f83badd462167",
+      "pricePerLine": 3,
+      "strategy": [
+        {
+          "numbers": [
+            1,
+            24,
+            25,
+            27,
+            34,
+            35
+          ],
+          "strong": 5,
+          "type": "smart",
+          "label": "בחירה סטטיסטית"
+        },
+        {
+          "numbers": [
+            9,
+            16,
+            19,
+            22,
+            32,
+            37
+          ],
+          "strong": 2,
+          "type": "disjoint-random",
+          "label": "אקראי ללא חפיפה"
+        }
+      ],
+      "baseline": [
+        {
+          "numbers": [
+            6,
+            8,
+            16,
+            29,
+            32,
+            34
+          ],
+          "strong": 4
+        },
+        {
+          "numbers": [
+            2,
+            13,
+            27,
+            28,
+            30,
+            37
+          ],
+          "strong": 4
+        }
+      ],
+      "analysis": {
+        "totalDrawsAnalyzed": 811,
+        "dateRange": {
+          "from": "2019-08-06",
+          "to": "2026-10-03"
+        },
+        "topFrequent": [
+          {
+            "number": 1,
+            "count": 152,
+            "pct": "18.7"
+          },
+          {
+            "number": 35,
+            "count": 147,
+            "pct": "18.1"
+          },
+          {
+            "number": 25,
+            "count": 143,
+            "pct": "17.6"
+          },
+          {
+            "number": 27,
+            "count": 143,
+            "pct": "17.6"
+          },
+          {
+            "number": 21,
+            "count": 141,
+            "pct": "17.4"
+          },
+          {
+            "number": 33,
+            "count": 141,
+            "pct": "17.4"
+          },
+          {
+            "number": 9,
+            "count": 139,
+            "pct": "17.1"
+          },
+          {
+            "number": 34,
+            "count": 139,
+            "pct": "17.1"
+          },
+          {
+            "number": 11,
+            "count": 137,
+            "pct": "16.9"
+          },
+          {
+            "number": 24,
+            "count": 137,
+            "pct": "16.9"
+          }
+        ],
+        "topTrending": [
+          {
+            "number": 1,
+            "score": 12.37
+          },
+          {
+            "number": 9,
+            "score": 11.47
+          },
+          {
+            "number": 5,
+            "score": 10.8
+          },
+          {
+            "number": 8,
+            "score": 10.76
+          },
+          {
+            "number": 7,
+            "score": 10.74
+          },
+          {
+            "number": 21,
+            "score": 10.62
+          },
+          {
+            "number": 18,
+            "score": 10.54
+          },
+          {
+            "number": 2,
+            "score": 10.23
+          },
+          {
+            "number": 32,
+            "score": 9.97
+          },
+          {
+            "number": 6,
+            "score": 9.91
+          }
+        ],
+        "topOverdue": [
+          {
+            "number": 36,
+            "drawsSinceLastSeen": 23
+          },
+          {
+            "number": 12,
+            "drawsSinceLastSeen": 20
+          },
+          {
+            "number": 19,
+            "drawsSinceLastSeen": 16
+          },
+          {
+            "number": 13,
+            "drawsSinceLastSeen": 15
+          },
+          {
+            "number": 18,
+            "drawsSinceLastSeen": 12
+          },
+          {
+            "number": 21,
+            "drawsSinceLastSeen": 9
+          },
+          {
+            "number": 23,
+            "drawsSinceLastSeen": 8
+          },
+          {
+            "number": 4,
+            "drawsSinceLastSeen": 7
+          },
+          {
+            "number": 9,
+            "drawsSinceLastSeen": 7
+          },
+          {
+            "number": 33,
+            "drawsSinceLastSeen": 7
+          }
+        ],
+        "hotPairs": [
+          {
+            "pair": "23-25",
+            "count": 33
+          },
+          {
+            "pair": "1-33",
+            "count": 31
+          },
+          {
+            "pair": "13-25",
+            "count": 30
+          },
+          {
+            "pair": "25-30",
+            "count": 29
+          },
+          {
+            "pair": "1-37",
+            "count": 28
+          },
+          {
+            "pair": "7-35",
+            "count": 28
+          },
+          {
+            "pair": "11-35",
+            "count": 28
+          },
+          {
+            "pair": "1-31",
+            "count": 27
+          },
+          {
+            "pair": "2-9",
+            "count": 27
+          },
+          {
+            "pair": "21-23",
+            "count": 27
+          },
+          {
+            "pair": "1-21",
+            "count": 27
+          },
+          {
+            "pair": "6-20",
+            "count": 27
+          },
+          {
+            "pair": "12-13",
+            "count": 27
+          },
+          {
+            "pair": "5-24",
+            "count": 27
+          },
+          {
+            "pair": "21-30",
+            "count": 27
+          },
+          {
+            "pair": "1-25",
+            "count": 26
+          },
+          {
+            "pair": "11-25",
+            "count": 26
+          },
+          {
+            "pair": "7-10",
+            "count": 26
+          },
+          {
+            "pair": "9-21",
+            "count": 26
+          },
+          {
+            "pair": "21-24",
+            "count": 26
+          }
+        ],
+        "allScores": [
+          {
+            "number": 1,
+            "score": 69.52,
+            "z": 1.95,
+            "observed": 152,
+            "expected": 131.5
+          },
+          {
+            "number": 35,
+            "score": 64.75,
+            "z": 1.48,
+            "observed": 147,
+            "expected": 131.5
+          },
+          {
+            "number": 25,
+            "score": 60.94,
+            "z": 1.09,
+            "observed": 143,
+            "expected": 131.5
+          },
+          {
+            "number": 27,
+            "score": 60.94,
+            "z": 1.09,
+            "observed": 143,
+            "expected": 131.5
+          },
+          {
+            "number": 21,
+            "score": 59.04,
+            "z": 0.9,
+            "observed": 141,
+            "expected": 131.5
+          },
+          {
+            "number": 33,
+            "score": 59.04,
+            "z": 0.9,
+            "observed": 141,
+            "expected": 131.5
+          },
+          {
+            "number": 9,
+            "score": 57.13,
+            "z": 0.71,
+            "observed": 139,
+            "expected": 131.5
+          },
+          {
+            "number": 34,
+            "score": 57.13,
+            "z": 0.71,
+            "observed": 139,
+            "expected": 131.5
+          },
+          {
+            "number": 11,
+            "score": 55.23,
+            "z": 0.52,
+            "observed": 137,
+            "expected": 131.5
+          },
+          {
+            "number": 24,
+            "score": 55.23,
+            "z": 0.52,
+            "observed": 137,
+            "expected": 131.5
+          },
+          {
+            "number": 5,
+            "score": 54.27,
+            "z": 0.43,
+            "observed": 136,
+            "expected": 131.5
+          },
+          {
+            "number": 23,
+            "score": 53.32,
+            "z": 0.33,
+            "observed": 135,
+            "expected": 131.5
+          },
+          {
+            "number": 37,
+            "score": 53.32,
+            "z": 0.33,
+            "observed": 135,
+            "expected": 131.5
+          },
+          {
+            "number": 12,
+            "score": 52.37,
+            "z": 0.24,
+            "observed": 134,
+            "expected": 131.5
+          },
+          {
+            "number": 20,
+            "score": 51.42,
+            "z": 0.14,
+            "observed": 133,
+            "expected": 131.5
+          },
+          {
+            "number": 2,
+            "score": 50.46,
+            "z": 0.05,
+            "observed": 132,
+            "expected": 131.5
+          },
+          {
+            "number": 7,
+            "score": 50.46,
+            "z": 0.05,
+            "observed": 132,
+            "expected": 131.5
+          },
+          {
+            "number": 19,
+            "score": 49.51,
+            "z": -0.05,
+            "observed": 131,
+            "expected": 131.5
+          },
+          {
+            "number": 29,
+            "score": 49.51,
+            "z": -0.05,
+            "observed": 131,
+            "expected": 131.5
+          },
+          {
+            "number": 30,
+            "score": 49.51,
+            "z": -0.05,
+            "observed": 131,
+            "expected": 131.5
+          },
+          {
+            "number": 8,
+            "score": 48.56,
+            "z": -0.14,
+            "observed": 130,
+            "expected": 131.5
+          },
+          {
+            "number": 10,
+            "score": 48.56,
+            "z": -0.14,
+            "observed": 130,
+            "expected": 131.5
+          },
+          {
+            "number": 13,
+            "score": 47.61,
+            "z": -0.24,
+            "observed": 129,
+            "expected": 131.5
+          },
+          {
+            "number": 6,
+            "score": 46.65,
+            "z": -0.33,
+            "observed": 128,
+            "expected": 131.5
+          },
+          {
+            "number": 17,
+            "score": 45.7,
+            "z": -0.43,
+            "observed": 127,
+            "expected": 131.5
+          },
+          {
+            "number": 31,
+            "score": 45.7,
+            "z": -0.43,
+            "observed": 127,
+            "expected": 131.5
+          },
+          {
+            "number": 28,
+            "score": 44.75,
+            "z": -0.53,
+            "observed": 126,
+            "expected": 131.5
+          },
+          {
+            "number": 4,
+            "score": 42.84,
+            "z": -0.72,
+            "observed": 124,
+            "expected": 131.5
+          },
+          {
+            "number": 14,
+            "score": 42.84,
+            "z": -0.72,
+            "observed": 124,
+            "expected": 131.5
+          },
+          {
+            "number": 16,
+            "score": 42.84,
+            "z": -0.72,
+            "observed": 124,
+            "expected": 131.5
+          },
+          {
+            "number": 18,
+            "score": 41.89,
+            "z": -0.81,
+            "observed": 123,
+            "expected": 131.5
+          },
+          {
+            "number": 26,
+            "score": 41.89,
+            "z": -0.81,
+            "observed": 123,
+            "expected": 131.5
+          },
+          {
+            "number": 32,
+            "score": 41.89,
+            "z": -0.81,
+            "observed": 123,
+            "expected": 131.5
+          },
+          {
+            "number": 36,
+            "score": 41.89,
+            "z": -0.81,
+            "observed": 123,
+            "expected": 131.5
+          },
+          {
+            "number": 22,
+            "score": 40.94,
+            "z": -0.91,
+            "observed": 122,
+            "expected": 131.5
+          },
+          {
+            "number": 15,
+            "score": 38.08,
+            "z": -1.19,
+            "observed": 119,
+            "expected": 131.5
+          },
+          {
+            "number": 3,
+            "score": 34.27,
+            "z": -1.57,
+            "observed": 115,
+            "expected": 131.5
+          }
+        ],
+        "strongScores": [
+          {
+            "number": 5,
+            "score": 62.19,
+            "z": 1.22,
+            "observed": 128,
+            "expected": 115.9
+          },
+          {
+            "number": 3,
+            "score": 54.16,
+            "z": 0.42,
+            "observed": 120,
+            "expected": 115.9
+          },
+          {
+            "number": 6,
+            "score": 51.15,
+            "z": 0.11,
+            "observed": 117,
+            "expected": 115.9
+          },
+          {
+            "number": 1,
+            "score": 48.14,
+            "z": -0.19,
+            "observed": 114,
+            "expected": 115.9
+          },
+          {
+            "number": 2,
+            "score": 47.13,
+            "z": -0.29,
+            "observed": 113,
+            "expected": 115.9
+          },
+          {
+            "number": 7,
+            "score": 45.13,
+            "z": -0.49,
+            "observed": 111,
+            "expected": 115.9
+          },
+          {
+            "number": 4,
+            "score": 42.12,
+            "z": -0.79,
+            "observed": 108,
+            "expected": 115.9
+          }
+        ]
+      },
+      "checksum": "e06cf92f2025b478f1bbb0f452954ec32825a4f5ac6b5949906dab4bf2ce69ac"
     }
   ],
   "performance": {
     "summary": {
       "mode": "paper",
-      "evaluatedDraws": 4,
+      "evaluatedDraws": 5,
       "pendingDraws": 1,
       "excludedDraws": 0,
       "missingPrizeDraws": 0,
       "strategy": {
-        "lines": 8,
-        "cost": 24,
+        "lines": 10,
+        "cost": 30,
         "payout": 10,
-        "netBeforeTax": -14,
-        "maxDrawdown": 14,
+        "netBeforeTax": -20,
+        "maxDrawdown": 20,
         "winningLines": 1,
         "hitsHistogram": [
           1,
-          3,
-          3,
+          4,
+          4,
           1,
           0,
           0,
@@ -3059,16 +3665,16 @@
         ]
       },
       "baseline": {
-        "lines": 8,
-        "cost": 24,
+        "lines": 10,
+        "cost": 30,
         "payout": 0,
-        "netBeforeTax": -24,
-        "maxDrawdown": 24,
+        "netBeforeTax": -30,
+        "maxDrawdown": 30,
         "winningLines": 0,
         "hitsHistogram": [
           3,
+          4,
           3,
-          2,
           0,
           0,
           0,
@@ -3449,9 +4055,104 @@
           ],
           "strongNumber": 3
         }
+      },
+      {
+        "drawId": 3971,
+        "date": "2026-10-03",
+        "createdAt": "2026-09-30T07:00:03.926Z",
+        "algorithmVersion": "paper-disjoint-v2",
+        "status": "evaluated",
+        "strategy": [
+          {
+            "numbers": [
+              1,
+              24,
+              25,
+              27,
+              34,
+              35
+            ],
+            "strong": 5,
+            "type": "smart",
+            "label": "בחירה סטטיסטית",
+            "hits": [
+              27
+            ],
+            "strongHit": false,
+            "prize": 0
+          },
+          {
+            "numbers": [
+              2,
+              21,
+              26,
+              28,
+              31,
+              33
+            ],
+            "strong": 7,
+            "type": "disjoint-random",
+            "label": "אקראי ללא חפיפה",
+            "hits": [
+              2,
+              31
+            ],
+            "strongHit": false,
+            "prize": 0
+          }
+        ],
+        "baseline": [
+          {
+            "numbers": [
+              2,
+              9,
+              28,
+              34,
+              35,
+              36
+            ],
+            "strong": 5,
+            "hits": [
+              2
+            ],
+            "strongHit": false,
+            "prize": 0
+          },
+          {
+            "numbers": [
+              6,
+              10,
+              11,
+              14,
+              16,
+              20
+            ],
+            "strong": 2,
+            "hits": [
+              6,
+              14
+            ],
+            "strongHit": false,
+            "prize": 0
+          }
+        ],
+        "costPerPolicy": 6,
+        "actual": {
+          "_id": 3971,
+          "date": "2026-10-03",
+          "winNumbers": [
+            2,
+            3,
+            6,
+            14,
+            27,
+            31
+          ],
+          "strongNumber": 6
+        }
       }
     ],
     "notice": "בדיקה על הנייר בלבד. הזכיות מחושבות לפי הפרס שפורסם לטור, לפני מס; סכום חסר אינו נחשב לאפס. זו אינה הוכחה ליתרון חיזוי."
   },
-  "checksum": "c3eaca538d9ed907337d12b2eba5dc6c26e53b562c6670ee6ff811b207de62da"
+  "checksum": "b88aeee4705205aa66dacddc0c26a9599fb98387c82ec1739407271cf459c15c"
 }
