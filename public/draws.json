@@ -1,16 +1,29 @@
 {
   "schemaVersion": 1,
   "source": "https://www.pais.co.il/Lotto/lotto_resultsDownload.aspx",
-  "fetchedAt": "2026-11-22T08:00:02.227Z",
+  "fetchedAt": "2026-11-25T08:00:07.122Z",
   "eraStart": "2019-08-04",
-  "drawsHash": "d60be93a09d3f2c7f583cb2ba59769b0ba9e6c65477db48145f66eaf54128392",
+  "drawsHash": "755f31b58490862f708d1f504bb73df4c494b67e3b5505acbd5ed61076f3c5be",
   "nextDraw": {
-    "id": 3988,
-    "date": "2026-11-24",
-    "cutoffAt": "2026-11-24T22:45:00+02:00",
+    "id": 3989,
+    "date": "2026-11-28",
+    "cutoffAt": "2026-11-28T22:45:00+02:00",
     "source": "https://www.pais.co.il/lotto/"
   },
   "draws": [
+    {
+      "_id": 3988,
+      "date": "2026-11-24",
+      "winNumbers": [
+        5,
+        8,
+        11,
+        12,
+        18,
+        35
+      ],
+      "strongNumber": 6
+    },
     {
       "_id": 3987,
       "date": "2026-11-21",
